@@ -9,6 +9,7 @@ use model::Parameters;
 
 pub mod algorithm;
 pub mod constants;
+pub mod engine;
 pub mod model;
 mod util;
 

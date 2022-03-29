@@ -68,6 +68,7 @@ impl<S> ScaledRatingPeriodResults<S> {
 
                 let opponent = *self
                     .participants
+                    .vec()
                     .get(opponent_idx)
                     .expect("player idx in results out of bounds");
 
@@ -82,6 +83,7 @@ impl<S> ScaledRatingPeriodResults<S> {
 
         let player = self
             .participants
+            .vec()
             .get(player_idx)
             .expect("player_idx out of bounds");
 
@@ -90,10 +92,11 @@ impl<S> ScaledRatingPeriodResults<S> {
 
     #[must_use]
     pub fn into_participants(self) -> Vec<ScaledRating> {
-        self.participants.into_inner()
+        self.participants.into()
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RatingResult<S> {
     player_1_idx: usize,
     player_2_idx: usize,
@@ -101,6 +104,21 @@ pub struct RatingResult<S> {
 }
 
 impl<S> RatingResult<S> {
+    #[must_use]
+    pub fn player_1_idx(&self) -> usize {
+        self.player_1_idx
+    }
+
+    #[must_use]
+    pub fn player_2_idx(&self) -> usize {
+        self.player_2_idx
+    }
+
+    #[must_use]
+    pub fn score(&self) -> &S {
+        &self.score
+    }
+
     #[must_use]
     pub fn opponent_idx(&self, player_idx: usize) -> Option<usize> {
         if self.player_1_idx == player_idx {
@@ -158,6 +176,23 @@ impl FromWithParameters<PlayerResult> for ScaledPlayerResult {
             opponent: result.opponent.into_with_parameters(parameters),
             score: result.score,
         }
+    }
+}
+
+impl ScaledPlayerResult {
+    #[must_use]
+    pub fn new(opponent: ScaledRating, score: f64) -> Self {
+        ScaledPlayerResult { opponent, score }
+    }
+
+    #[must_use]
+    pub fn opponent(&self) -> ScaledRating {
+        self.opponent
+    }
+
+    #[must_use]
+    pub fn score(&self) -> f64 {
+        self.score
     }
 }
 
