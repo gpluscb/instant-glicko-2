@@ -2,6 +2,13 @@
 name = "instant-glicko-2"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/gpluscb/instant-glicko-2"
+readme = "README.md"
+license = "MIT"
+keywords = ["glicko-2", "glicko", "rating", "elo"]
+categories = ["game-development", "mathematics"]
+description = "Implementation of the Glicko-2 rating system that allows for instant feedback after games, not just once a rating period closes"
+# rust-version = # TODO
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
