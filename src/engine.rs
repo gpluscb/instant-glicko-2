@@ -72,13 +72,40 @@ impl RatingEngine {
     /// Creates a new [`RatingEngine`], starting the first rating period immediately.
     #[must_use]
     pub fn start_new(rating_period_duration: Duration, parameters: Parameters) -> Self {
+        Self::start_new_at(rating_period_duration, Instant::now(), parameters)
+    }
+
+    /// Creates a new [`RatingEngine`], starting the first rating period at the specified point in time.
+    /// `start_time` may be at any point in the past, but not in the future.
+    /// This is a requirement to prevent potential panics in other functions.
+    ///
+    /// This function is meant mostly for testability.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `start_time` is in the future.
+    #[must_use]
+    pub fn start_new_at(
+        rating_period_duration: Duration,
+        start_time: Instant,
+        parameters: Parameters,
+    ) -> Self {
+        assert!(start_time < Instant::now(), "Start time was in the past");
+
         RatingEngine {
             rating_period_duration,
-            last_rating_period_start: Instant::now(),
+            last_rating_period_start: start_time,
             managed_players: PushOnlyVec::new(),
             parameters,
         }
     }
+
+    /// Registers a new player with a given rating to this engine.
+    ///
+    /// # Returns
+    ///
+    /// Returns a value that can be later used to identify this player with this engine
+    /// to get their ratings.
 
     // TODO: Newtype for index, maybe some better support in crate::utils
     pub fn register_player<R>(&mut self, rating: R) -> usize
@@ -99,6 +126,8 @@ impl RatingEngine {
 
     /// Registers a result in the current rating period.
     /// Calculating the resulting ratings happens only when the Rating is inspected.
+    ///
+    /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
     ///
     /// # Panics
     ///
@@ -141,12 +170,39 @@ impl RatingEngine {
             ));
     }
 
+    /// Calculates a player's rating at this point in time.
+    /// The calculation is based on the registered results for this player (see [`register_result`][Self::register_result]).
+    /// Note that this function is not cheap.
+    /// The rating deviation of this result also depends on the current time, because rating deviation increases with time.
+    ///
+    /// This function takes `self` mutably because it can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
+    ///
+    /// # Panics
+    ///
+    /// This function might panic or return a meaningless result if `player_idx` wasn't sourced from this [`RatingEngine`].
     #[must_use]
     pub fn player_rating<R>(&mut self, player_idx: usize) -> R
     where
         R: FromWithParameters<ScaledRating>,
     {
-        let (elapsed_periods, _) = self.maybe_close_rating_periods();
+        self.player_rating_at(player_idx, Instant::now())
+    }
+
+    /// Returns a player
+    ///
+    /// This function is meant mostly for testability.
+    ///
+    /// This function takes `self` mutably because it can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `time` is earlier than the start of the last rating period.
+    #[must_use]
+    pub fn player_rating_at<R>(&mut self, player_idx: usize, time: Instant) -> R
+    where
+        R: FromWithParameters<ScaledRating>,
+    {
+        let (elapsed_periods, _) = self.maybe_close_rating_periods_at(time);
 
         let player = self
             .managed_players
@@ -166,13 +222,31 @@ impl RatingEngine {
     /// Closes all open rating periods that have elapsed by now.
     /// This doesn't need to be called manually.
     ///
+    /// When a rating period is closed, the stored results are cleared and the players' ratings
+    /// at the end of the period are stored as their ratings at the beginning of the next one.
+    ///
     /// # Returns
     ///
     /// A tuple containing the elapsed periods in the current rating period *after* all previous periods have been closed as a fraction
     /// as well as the amount of rating periods that have been closed.
     /// The elapsed periods will always be smaller than 1.
     pub fn maybe_close_rating_periods(&mut self) -> (f64, u32) {
-        let elapsed_periods = self.elapsed_periods();
+        self.maybe_close_rating_periods_at(Instant::now())
+    }
+
+    /// Closes all open rating periods that have elapsed by a given point in time.
+    /// This doesn't need to be called manually.
+    ///
+    /// When a rating period is closed, the stored results are cleared and the players' ratings
+    /// at the end of the period are stored as their ratings at the beginning of the next one.
+    ///
+    /// This function is meant mostly for testability.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `time` is earlier than the start of the last rating period.
+    pub fn maybe_close_rating_periods_at(&mut self, time: Instant) -> (f64, u32) {
+        let elapsed_periods = self.elapsed_periods_at(time);
 
         // We won't have negative elapsed_periods. Truncation this is the wanted result.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -201,7 +275,19 @@ impl RatingEngine {
     /// The amount of rating periods that have elapsed since the last one was closed as a fraction.
     #[must_use]
     pub fn elapsed_periods(&self) -> f64 {
-        let elapsed_duration = self.last_rating_period_start.elapsed();
+        self.elapsed_periods_at(Instant::now())
+    }
+
+    /// The amount of rating periods that have elapsed at the given point in time since the last one was closed as a fraction.
+    ///
+    /// This function is meant mostly for testability.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `time` is earlier than the start of the last rating period.
+    #[must_use]
+    pub fn elapsed_periods_at(&self, time: Instant) -> f64 {
+        let elapsed_duration = time.duration_since(self.last_rating_period_start);
 
         elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
     }
