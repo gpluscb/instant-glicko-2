@@ -50,7 +50,7 @@ impl RatingEngine {
     /// This function might panic if the `result`'s players do not come from this `RatingEngine`.
     pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) {
         // We have to maybe close so the results will be added in the right rating period.
-        self.maybe_close_rating_periods_now();
+        self.maybe_close_rating_periods();
 
         // Split the result into two ScaledPlayerResults and save that on the players
         let player_1_rating = self
@@ -88,7 +88,7 @@ impl RatingEngine {
 
     #[must_use]
     pub fn player_rating(&mut self, player_idx: usize) -> ScaledRating {
-        let elapsed_periods = self.maybe_close_rating_periods_now();
+        let (elapsed_periods, _) = self.maybe_close_rating_periods();
 
         let player = self
             .managed_players
@@ -104,10 +104,15 @@ impl RatingEngine {
         )
     }
 
+    /// Closes all open rating periods that have elapsed by now.
+    /// This doesn't need to be called manually.
+    ///
     /// # Returns
     ///
-    /// The elapsed periods in the current rating period *after* all previous periods have been closed.
-    fn maybe_close_rating_periods_now(&mut self) -> f64 {
+    /// A tuple containing the elapsed periods in the current rating period *after* all previous periods have been closed as a fraction
+    /// as well as the amount of rating periods that have been closed.
+    /// The elapsed periods will always be smaller than 1.
+    pub fn maybe_close_rating_periods(&mut self) -> (f64, u32) {
         let elapsed_periods = self.elapsed_periods();
 
         // We won't have negative elapsed_periods. Truncation this is the wanted result.
@@ -131,9 +136,12 @@ impl RatingEngine {
 
         self.last_rating_period_start += periods_to_close * self.rating_period_duration;
 
-        elapsed_periods.fract()
+        (elapsed_periods.fract(), periods_to_close)
     }
 
+    /// # Returns
+    ///
+    /// The amount of rating periods that have elapsed since the last one was closed as a fraction.
     #[must_use]
     pub fn elapsed_periods(&self) -> f64 {
         let elapsed_duration = self.last_rating_period_start.elapsed();

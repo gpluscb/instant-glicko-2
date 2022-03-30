@@ -1,6 +1,18 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::cargo)]
-// #![warn(missing_docs)] // TODO
+#![warn(rustdoc::pedantic)]
+// #![warn(
+//     missing_docs,
+//     rustdoc::missing_crate_level_docs,
+//     rustdoc::missing_doc_code_examples,
+//     rustdoc::private_doc_tests
+// )] // TODO
+#![deny(
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::invalid_rust_codeblocks
+)]
 #![forbid(unsafe_code)]
 
 // TODO: can probably easily get nostd to work at least partially
