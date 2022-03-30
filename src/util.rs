@@ -1,7 +1,7 @@
 //! Utilities that are needed or useful for the rest of the crate,
-//! but that don't have anything really to do with the core of the crate.
+//! but that don't really have anything to do with the core of the crate.
 
-use std::slice::IterMut;
+use std::slice::{IterMut, SliceIndex};
 
 /// A wrapper around [`Vec`] that only let's you append.
 /// This allows for indic into the [`Vec`] to always stay valid.
@@ -36,16 +36,32 @@ impl<T> PushOnlyVec<T> {
         &self.0
     }
 
-    /// Appends an element to the
+    /// Appends an element to the underlying [`Vec`].
+    ///
+    /// See also: [`Vec::push()`]
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the capacity of the underlying [`Vec`] exceeds [`isize::MAX`] bytes.
     pub fn push(&mut self, value: T) {
         self.0.push(value);
     }
 
+    /// Returns a mutable reference to an element or subslice depending on the
+    /// type of index or `None` if the index is out of bounds.
+    ///
+    /// See also: [`[T]::get_mut`]
     #[must_use]
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+    pub fn get_mut<I>(&mut self, index: I) -> Option<&mut I::Output>
+    where
+        I: SliceIndex<[T]>,
+    {
         self.0.get_mut(index)
     }
 
+    /// Returns an iterator that allows mutating each value.
+    ///
+    /// See also: [`[T]::iter_mut()`]
     #[must_use]
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         self.0.iter_mut()
