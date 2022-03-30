@@ -1,8 +1,10 @@
+use std::borrow::Borrow;
 use std::f64::consts::PI;
 
 use crate::model::{Parameters, Rating, ScaledRating};
 use crate::{FromWithParameters, IntoWithParameters};
 
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PlayerResult {
     opponent: Rating,
     score: f64,
@@ -14,6 +16,21 @@ impl FromWithParameters<ScaledPlayerResult> for PlayerResult {
             opponent: scaled.opponent.into_with_parameters(parameters),
             score: scaled.score,
         }
+    }
+}
+
+impl FromWithParameters<&'_ [ScaledPlayerResult]> for Box<[PlayerResult]> {
+    fn from_with_parameters(scaled: &'_ [ScaledPlayerResult], parameters: Parameters) -> Self {
+        scaled
+            .iter()
+            .map(|&s| s.into_with_parameters(parameters))
+            .collect()
+    }
+}
+
+impl<const N: usize> FromWithParameters<[ScaledPlayerResult; N]> for [PlayerResult; N] {
+    fn from_with_parameters(scaled: [ScaledPlayerResult; N], parameters: Parameters) -> Self {
+        scaled.map(|s| s.into_with_parameters(parameters))
     }
 }
 
@@ -29,6 +46,21 @@ impl FromWithParameters<PlayerResult> for ScaledPlayerResult {
             opponent: result.opponent.into_with_parameters(parameters),
             score: result.score,
         }
+    }
+}
+
+impl FromWithParameters<&'_ [PlayerResult]> for Box<[ScaledPlayerResult]> {
+    fn from_with_parameters(scaled: &'_ [PlayerResult], parameters: Parameters) -> Self {
+        scaled
+            .iter()
+            .map(|&s| s.into_with_parameters(parameters))
+            .collect()
+    }
+}
+
+impl<const N: usize> FromWithParameters<[PlayerResult; N]> for [ScaledPlayerResult; N] {
+    fn from_with_parameters(result: [PlayerResult; N], parameters: Parameters) -> Self {
+        result.map(|r| r.into_with_parameters(parameters))
     }
 }
 
@@ -140,22 +172,86 @@ impl<S> RatingResult<S> {
     }
 }
 
+/// This is just a wrapper for [`generic_close_player_rating_period`].
+/// If you work with ratings that are not scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
+/// this function avoids you having to manually specify generic type parameters.
+///
+/// See [`generic_close_player_rating_period`] for more documentation.
+pub fn close_player_rating_period(
+    player_rating: &mut Rating,
+    results: &[PlayerResult],
+    parameters: Parameters,
+) {
+    generic_close_player_rating_period::<_, _, Box<_>>(player_rating, results, parameters);
+}
+
+/// This is just a wrapper for [`generic_close_player_rating_period`].
+/// If you work with ratings that are scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
+/// this function avoids you having to manually specify generic type parameters.
+///
+/// See [`generic_close_player_rating_period`] for more documentation.
+pub fn close_player_rating_period_scaled(
+    player_rating: &mut ScaledRating,
+    results: &[ScaledPlayerResult],
+    parameters: Parameters,
+) {
+    generic_close_player_rating_period::<_, _, &_>(player_rating, results, parameters);
+}
+
 /// Finalises a rating period for a player, taking into account all `results`.
+///
+/// See also: [`close_player_rating_period`] and [`close_player_rating_period_scaled`]
 ///
 /// # Arguments
 ///
 /// * `player_rating` - The rating of the player **at the onset of the rating period**
 /// * `results` - The results of the player that occurred in the current rating period
 /// * `parameters`
-pub fn close_player_rating_period(
-    player_rating: &mut ScaledRating,
-    results: &[ScaledPlayerResult],
+pub fn generic_close_player_rating_period<Rating, Results, ResultsSlice>(
+    player_rating: &mut Rating,
+    results: Results,
     parameters: Parameters,
-) {
-    *player_rating = rate_player(*player_rating, results, 1.0, parameters);
+) where
+    Rating: IntoWithParameters<ScaledRating> + FromWithParameters<ScaledRating> + Copy,
+    Results: IntoWithParameters<ResultsSlice>,
+    ResultsSlice: Borrow<[ScaledPlayerResult]>,
+{
+    *player_rating = generic_rate_player(*player_rating, results, 1.0, parameters);
+}
+
+/// This is just a wrapper for [`generic_rate_player`].
+/// If you work with ratings that are not scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
+/// this function avoids you having to manually specify generic type parameters.
+///
+/// See [`generic_rate_player`] for more documentation.
+#[must_use]
+pub fn rate_player(
+    player_rating: Rating,
+    results: &[PlayerResult],
+    elapsed_periods: f64,
+    parameters: Parameters,
+) -> Rating {
+    generic_rate_player::<_, _, _, Box<_>>(player_rating, results, elapsed_periods, parameters)
+}
+
+/// This is just a wrapper for [`generic_rate_player`].
+/// If you work with ratings that are scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
+/// this function avoids you having to manually specify generic type parameters.
+///
+/// See [`generic_rate_player`] for more documentation.
+#[must_use]
+pub fn rate_player_scaled(
+    player_rating: ScaledRating,
+    results: &[ScaledPlayerResult],
+    elapsed_periods: f64,
+    parameters: Parameters,
+) -> ScaledRating {
+    generic_rate_player::<_, _, _, &_>(player_rating, results, elapsed_periods, parameters)
 }
 
 /// If `results` is empty, only the rating deviation changes according to `elapsed_periods`.
+///
+/// See also: [`rate_player`] and [`rate_player_scaled`]
 ///
 /// # Arguments
 ///
@@ -164,12 +260,24 @@ pub fn close_player_rating_period(
 /// * `elapsed_periods` - What fraction of a rating period has elapsed while the `results` were collected
 /// * `parameters`
 #[must_use]
-pub fn rate_player(
-    player_rating: ScaledRating,
-    results: &[ScaledPlayerResult],
+pub fn generic_rate_player<Rating, Return, Results, ScaledResults>(
+    player_rating: Rating,
+    results: Results,
     elapsed_periods: f64,
     parameters: Parameters,
-) -> ScaledRating {
+) -> Return
+where
+    Rating: IntoWithParameters<ScaledRating>,
+    Return: FromWithParameters<ScaledRating>,
+    Results: IntoWithParameters<ScaledResults>,
+    ScaledResults: Borrow<[ScaledPlayerResult]>,
+{
+    // Step 1. (initialising) doesn't apply, we have already set the starting ratings.
+    // Maybe Step 2.
+    let player_rating = player_rating.into_with_parameters(parameters);
+    let results = results.into_with_parameters(parameters);
+    let results = results.borrow();
+
     if results.is_empty() {
         // If `results` is empty, only Step 6. applies
         let new_deviation = calculate_pre_rating_period_value(
@@ -182,11 +290,10 @@ pub fn rate_player(
             player_rating.rating(),
             new_deviation,
             player_rating.volatility(),
-        );
+        )
+        .into_with_parameters(parameters);
     }
 
-    // Step 1. (initialising) doesn't apply, we have already set the starting ratings.
-    // Step 2. (scaling down) doesn't apply, we already have a `ScaledRating` and `ScaledPlayerResult`s.
     // Step 3.
     let estimated_variance = calculate_estimated_variance(player_rating, results.iter().copied());
 
@@ -211,8 +318,8 @@ pub fn rate_player(
 
     let new_rating = calculate_new_rating(new_deviation, player_rating, results.iter().copied());
 
-    // Step 8. doesn't really apply, can be done manually later.
-    ScaledRating::new(new_rating, new_deviation, new_volatility)
+    // Maybe Step 8..
+    ScaledRating::new(new_rating, new_deviation, new_volatility).into_with_parameters(parameters)
 }
 
 /// Step 3.
@@ -442,27 +549,19 @@ mod test {
             PlayerResult {
                 opponent: opponent_a,
                 score: 1.0,
-            }
-            .into_with_parameters(parameters),
+            },
             PlayerResult {
                 opponent: opponent_b,
                 score: 0.0,
-            }
-            .into_with_parameters(parameters),
+            },
             PlayerResult {
                 opponent: opponent_c,
                 score: 0.0,
-            }
-            .into_with_parameters(parameters),
+            },
         ];
 
-        let new_rating: Rating = super::rate_player(
-            player.into_with_parameters(parameters),
-            &results,
-            1.0,
-            parameters,
-        )
-        .into_with_parameters(parameters);
+        let new_rating: Rating = super::rate_player(player, results.as_ref(), 1.0, parameters)
+            .into_with_parameters(parameters);
 
         assert_approx_eq!(new_rating.rating(), 1464.06, 0.01);
         assert_approx_eq!(new_rating.deviation(), 151.52, 0.01);

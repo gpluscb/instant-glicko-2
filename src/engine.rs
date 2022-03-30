@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use crate::algorithm::{self, RatingResult, ScaledPlayerResult, Score};
 use crate::model::{Parameters, ScaledRating};
 use crate::util::PushOnlyVec;
+use crate::{FromWithParameters, IntoWithParameters};
 
 pub struct ScaledPlayer {
     rating: ScaledRating,
@@ -32,7 +33,12 @@ impl RatingEngine {
     }
 
     // TODO: Newtype for index, maybe some better support in crate::utils
-    pub fn register_player(&mut self, rating: ScaledRating) -> usize {
+    pub fn register_player<R>(&mut self, rating: R) -> usize
+    where
+        R: IntoWithParameters<ScaledRating>,
+    {
+        let rating = rating.into_with_parameters(self.parameters);
+
         let index = self.managed_players.vec().len();
 
         self.managed_players.push(ScaledPlayer {
@@ -44,6 +50,7 @@ impl RatingEngine {
     }
 
     /// Registers a result in the current rating period.
+    /// Calculating the resulting ratings happens only when the Rating is inspected.
     ///
     /// # Panics
     ///
@@ -87,7 +94,10 @@ impl RatingEngine {
     }
 
     #[must_use]
-    pub fn player_rating(&mut self, player_idx: usize) -> ScaledRating {
+    pub fn player_rating<R>(&mut self, player_idx: usize) -> R
+    where
+        R: FromWithParameters<ScaledRating>,
+    {
         let (elapsed_periods, _) = self.maybe_close_rating_periods();
 
         let player = self
@@ -96,12 +106,13 @@ impl RatingEngine {
             .get(player_idx)
             .expect("Player index didn't belong to this RatingEngine");
 
-        algorithm::rate_player(
+        algorithm::rate_player_scaled(
             player.rating,
             &player.current_rating_period_results,
             elapsed_periods,
             self.parameters,
         )
+        .into_with_parameters(self.parameters)
     }
 
     /// Closes all open rating periods that have elapsed by now.
@@ -123,7 +134,7 @@ impl RatingEngine {
         // This is guaranteed because we call this method before every time a new result gets added.
         for player in self.managed_players.iter_mut() {
             for _ in 0..periods_to_close {
-                algorithm::close_player_rating_period(
+                algorithm::close_player_rating_period_scaled(
                     &mut player.rating,
                     &player.current_rating_period_results,
                     self.parameters,
@@ -139,8 +150,6 @@ impl RatingEngine {
         (elapsed_periods.fract(), periods_to_close)
     }
 
-    /// # Returns
-    ///
     /// The amount of rating periods that have elapsed since the last one was closed as a fraction.
     #[must_use]
     pub fn elapsed_periods(&self) -> f64 {
