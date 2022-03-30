@@ -36,9 +36,17 @@ pub mod util;
 
 /// Trait to convert between two types with [`Parameters`].
 /// Usually used to convert between the internal rating scaling and the public Glicko rating scaling.
+///
+/// A blanket implementation [`FromWithParameters<T>`] for any `T` is provided.
 pub trait FromWithParameters<T> {
     /// Performs the conversion
     fn from_with_parameters(_: T, parameters: Parameters) -> Self;
+}
+
+impl<T> FromWithParameters<T> for T {
+    fn from_with_parameters(t: T, _: Parameters) -> Self {
+        t
+    }
 }
 
 /// Trait to convert between two types with [`Parameters`].
