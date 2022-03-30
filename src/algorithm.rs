@@ -1,8 +1,53 @@
 use std::f64::consts::PI;
 
 use crate::model::{Parameters, Rating, ScaledRating};
-use crate::util::PushOnlyVec;
 use crate::{FromWithParameters, IntoWithParameters};
+
+pub struct PlayerResult {
+    opponent: Rating,
+    score: f64,
+}
+
+impl FromWithParameters<ScaledPlayerResult> for PlayerResult {
+    fn from_with_parameters(scaled: ScaledPlayerResult, parameters: Parameters) -> Self {
+        PlayerResult {
+            opponent: scaled.opponent.into_with_parameters(parameters),
+            score: scaled.score,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct ScaledPlayerResult {
+    opponent: ScaledRating,
+    score: f64,
+}
+
+impl FromWithParameters<PlayerResult> for ScaledPlayerResult {
+    fn from_with_parameters(result: PlayerResult, parameters: Parameters) -> Self {
+        ScaledPlayerResult {
+            opponent: result.opponent.into_with_parameters(parameters),
+            score: result.score,
+        }
+    }
+}
+
+impl ScaledPlayerResult {
+    #[must_use]
+    pub fn new(opponent: ScaledRating, score: f64) -> Self {
+        ScaledPlayerResult { opponent, score }
+    }
+
+    #[must_use]
+    pub fn opponent(&self) -> ScaledRating {
+        self.opponent
+    }
+
+    #[must_use]
+    pub fn score(&self) -> f64 {
+        self.score
+    }
+}
 
 pub trait Score {
     fn player_score(&self) -> f64;
@@ -38,61 +83,6 @@ impl MatchResult {
             MatchResult::Draw => MatchResult::Draw,
             MatchResult::Loss => MatchResult::Win,
         }
-    }
-}
-
-pub struct ScaledRatingPeriodResults<S> {
-    // Push only just in case, otherwise modifying would invalidate results.
-    participants: PushOnlyVec<ScaledRating>,
-    results: Vec<RatingResult<S>>,
-}
-
-impl<S> ScaledRatingPeriodResults<S> {
-    pub fn indices(&self) -> impl Iterator<Item = usize> {
-        0..self.participants.vec().len()
-    }
-
-    /// # Panics
-    ///
-    /// This function panics if `player_idx` is out of bounds.
-    #[must_use]
-    pub fn player_results(&self, player_idx: usize) -> (&ScaledRating, Vec<ScaledPlayerResult>)
-    where
-        S: Score,
-    {
-        let vec = self
-            .results
-            .iter()
-            .filter_map(|result| {
-                let opponent_idx = result.opponent_idx(player_idx)?;
-
-                let opponent = *self
-                    .participants
-                    .vec()
-                    .get(opponent_idx)
-                    .expect("player idx in results out of bounds");
-
-                Some(ScaledPlayerResult {
-                    opponent,
-                    score: result
-                        .player_score(player_idx)
-                        .expect("player idx was not in result after verifying it is in result"),
-                })
-            })
-            .collect();
-
-        let player = self
-            .participants
-            .vec()
-            .get(player_idx)
-            .expect("player_idx out of bounds");
-
-        (player, vec)
-    }
-
-    #[must_use]
-    pub fn into_participants(self) -> Vec<ScaledRating> {
-        self.participants.into()
     }
 }
 
@@ -147,81 +137,6 @@ impl<S> RatingResult<S> {
     #[must_use]
     pub fn includes(&self, player_idx: usize) -> bool {
         self.player_1_idx == player_idx || self.player_2_idx == player_idx
-    }
-}
-
-pub struct PlayerResult {
-    opponent: Rating,
-    score: f64,
-}
-
-impl FromWithParameters<ScaledPlayerResult> for PlayerResult {
-    fn from_with_parameters(scaled: ScaledPlayerResult, parameters: Parameters) -> Self {
-        PlayerResult {
-            opponent: scaled.opponent.into_with_parameters(parameters),
-            score: scaled.score,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct ScaledPlayerResult {
-    opponent: ScaledRating,
-    score: f64,
-}
-
-impl FromWithParameters<PlayerResult> for ScaledPlayerResult {
-    fn from_with_parameters(result: PlayerResult, parameters: Parameters) -> Self {
-        ScaledPlayerResult {
-            opponent: result.opponent.into_with_parameters(parameters),
-            score: result.score,
-        }
-    }
-}
-
-impl ScaledPlayerResult {
-    #[must_use]
-    pub fn new(opponent: ScaledRating, score: f64) -> Self {
-        ScaledPlayerResult { opponent, score }
-    }
-
-    #[must_use]
-    pub fn opponent(&self) -> ScaledRating {
-        self.opponent
-    }
-
-    #[must_use]
-    pub fn score(&self) -> f64 {
-        self.score
-    }
-}
-
-pub fn close_rating_period<S: Score>(
-    results: &mut ScaledRatingPeriodResults<S>,
-    parameters: Parameters,
-) {
-    #[allow(clippy::needless_collect)]
-    // If we follow the lint suggestion, we run into lifetime issues
-    let after_ratings = results
-        .indices()
-        .map(|idx| {
-            let (rating, results) = results.player_results(idx);
-            // We must not mutate the original ranking quite yet,
-            // because on later iterations, we still need to
-            let mut rating_copy = *rating;
-
-            close_player_rating_period(&mut rating_copy, &results, parameters);
-
-            rating_copy
-        })
-        .collect::<Vec<_>>();
-
-    for (before_rating, after_rating) in results
-        .participants
-        .iter_mut()
-        .zip(after_ratings.into_iter())
-    {
-        *before_rating = after_rating;
     }
 }
 
