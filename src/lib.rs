@@ -4,7 +4,6 @@
 // #![warn(
 //     missing_docs,
 //     rustdoc::missing_crate_level_docs,
-//     rustdoc::missing_doc_code_examples,
 //     rustdoc::private_doc_tests
 // )] // TODO
 #![deny(
@@ -23,7 +22,7 @@ pub mod algorithm;
 pub mod constants;
 pub mod engine;
 pub mod model;
-mod util;
+pub mod util;
 
 pub trait FromWithParameters<T> {
     fn from_with_parameters(_: T, parameters: Parameters) -> Self;
