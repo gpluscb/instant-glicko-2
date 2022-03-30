@@ -126,6 +126,15 @@ pub struct RatingResult<S> {
 
 impl<S> RatingResult<S> {
     #[must_use]
+    pub fn new(player_1_idx: usize, player_2_idx: usize, score: S) -> Self {
+        RatingResult {
+            player_1_idx,
+            player_2_idx,
+            score,
+        }
+    }
+
+    #[must_use]
     pub fn player_1_idx(&self) -> usize {
         self.player_1_idx
     }
