@@ -1,9 +1,8 @@
 use std::time::{Duration, Instant};
 
 use crate::algorithm::{self, RatingResult, ScaledPlayerResult, Score};
-use crate::model::{Parameters, ScaledRating};
 use crate::util::PushOnlyVec;
-use crate::{FromWithParameters, IntoWithParameters};
+use crate::{FromWithParameters, IntoWithParameters, Parameters, ScaledRating};
 
 pub struct ScaledPlayer {
     rating: ScaledRating,

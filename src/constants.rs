@@ -1,5 +1,5 @@
 //! Various constants defined or recommended in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf),
-//! including defaults for [`model::Parameters`][crate::model::Parameters]
+//! including defaults for [`model::Parameters`][crate::Parameters]
 
 /// Constant for converting between the original Glicko scale, and the internal Glicko-2 scale.
 ///

@@ -1,8 +1,7 @@
 use std::borrow::Borrow;
 use std::f64::consts::PI;
 
-use crate::model::{Parameters, Rating, ScaledRating};
-use crate::{FromWithParameters, IntoWithParameters};
+use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PlayerResult {
@@ -513,8 +512,7 @@ fn calculate_new_rating(
 
 #[cfg(test)]
 mod test {
-    use crate::model::{Parameters, Rating};
-    use crate::IntoWithParameters;
+    use crate::{IntoWithParameters, Parameters, Rating};
 
     use super::PlayerResult;
 
