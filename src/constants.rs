@@ -1,5 +1,5 @@
 //! Various constants defined or recommended in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf),
-//! including defaults for [`model::Parameters`][crate::Parameters]
+//! including defaults for [`model::Parameters`][crate::Parameters].
 
 use crate::Rating;
 
