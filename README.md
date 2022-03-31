@@ -7,6 +7,8 @@ This implementation aims to solve that problem by allowing fractional rating per
 This draws inspiration from the [rating system implementation](https://github.com/lichess-org/lila/tree/master/modules/rating/src/main/java/glicko2) for open-source chess website [Lichess](https://lichess.org),
 as well as two blogpost ([1](https://blog.hypersect.com/the-online-skill-ranking-of-inversus-deluxe/), [2](https://blog.hypersect.com/additional-thoughts-on-skill-ratings/)) by Ryan Juckett on skill ratings for [INVERSUS Deluxe](https://www.inversusgame.com/).
 
+For more on the implementation, I wrote something [here](https://gist.github.com/gpluscb/302d6b71a8d0fe9f4350d45bc828f802).
+
 Documentation for the crate can be found on [Docs.rs](https://docs.rs/instant-glicko-2/latest/instant_glicko_2/).
 
 To use this as a dependency, add the following line to your `Cargo.toml` dependencies:
