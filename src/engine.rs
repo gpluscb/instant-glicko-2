@@ -47,15 +47,17 @@ pub struct ScaledPlayer {
 /// ));
 ///
 /// // Print the new ratings
-/// // Type signatures are needed because we could also work with the internal ScaledRating.
-/// // That skips one step of calculation, but the rating values are not as pretty and not comparable to the original Glicko ratings.
+/// // Type signatures are needed because we could also work with the internal ScaledRating
+/// // That skips one step of calculation,
+/// // but the rating values are not as pretty and not comparable to the original Glicko ratings
 /// let player_1_rating_new: Rating = engine.player_rating(player_1);
 /// println!("Player 1 old rating: {player_1_rating_old:?}, new rating: {player_1_rating_new:?}");
 /// let player_2_rating_new: Rating = engine.player_rating(player_2);
 /// println!("Player 2 old rating: {player_2_rating_old:?}, new rating: {player_2_rating_new:?}");
 ///
-/// assert_ne!(player_1_rating_old, player_1_rating_new);
-/// assert_ne!(player_2_rating_old, player_2_rating_new);
+/// // Loser's rating goes down, winner's rating goes up
+/// assert!(player_1_rating_old.rating() > player_1_rating_new.rating());
+/// assert!(player_2_rating_old.rating() < player_2_rating_new.rating());
 /// ```
 
 // In this case, just engine::Rating does not tell enough about the purpose of the struct in my opinion.
@@ -290,5 +292,145 @@ impl RatingEngine {
         let elapsed_duration = time.duration_since(self.last_rating_period_start);
 
         elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::{Duration, Instant};
+
+    use super::RatingEngine;
+    use crate::algorithm::{MatchResult, RatingResult};
+    use crate::{Parameters, Rating};
+
+    macro_rules! assert_approx_eq {
+        ($a:expr, $b:expr, $tolerance:expr $(,)?) => {{
+            let a_val = $a;
+            let b_val = $b;
+
+            assert!(
+                (a_val - b_val).abs() <= $tolerance,
+                "{} = {a_val} is not approximately equal to {} = {b_val}",
+                stringify!($a),
+                stringify!($b)
+            )
+        }};
+    }
+
+    /// This tests the example calculation in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
+    #[test]
+    fn test_paper_example() {
+        let parameters = Parameters::default().with_volatility_change(0.5);
+
+        let start_instant = Instant::now();
+
+        let mut engine =
+            RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
+
+        let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
+
+        // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
+        // Constructor asserts it to be > 0.0
+        let opponent_a =
+            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility));
+        let opponent_b =
+            engine.register_player(Rating::new(1550.0, 100.0, parameters.start_volatility));
+        let opponent_c =
+            engine.register_player(Rating::new(1700.0, 300.0, parameters.start_volatility));
+
+        engine.register_result(&RatingResult::new(player, opponent_a, MatchResult::Win));
+        engine.register_result(&RatingResult::new(player, opponent_b, MatchResult::Loss));
+        engine.register_result(&RatingResult::new(player, opponent_c, MatchResult::Loss));
+
+        let rating_period_end_time = start_instant + Duration::from_secs(1);
+
+        let new_rating: Rating = engine.player_rating_at(player, rating_period_end_time);
+
+        assert_approx_eq!(new_rating.rating(), 1464.06, 0.01);
+        assert_approx_eq!(new_rating.deviation(), 151.52, 0.01);
+        assert_approx_eq!(new_rating.volatility(), 0.05999, 0.0001);
+    }
+
+    #[test]
+    fn test_rating_period_close() {
+        // Setup similar to paper setup
+        let parameters = Parameters::default();
+
+        let start_instant = Instant::now();
+
+        let mut engine =
+            RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
+
+        let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
+
+        let opponent =
+            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility));
+
+        engine.register_result(&RatingResult::new(player, opponent, MatchResult::Win));
+
+        assert_approx_eq!(engine.elapsed_periods_at(start_instant), 0.0, f64::EPSILON);
+        let (elapsed_period, closed_periods) = engine.maybe_close_rating_periods_at(start_instant);
+        assert_approx_eq!(elapsed_period, 0.0, f64::EPSILON);
+        assert_eq!(closed_periods, 0);
+
+        // Test that rating doesn't radically change across rating periods
+        let right_before = start_instant + (Duration::from_secs(1) - Duration::from_nanos(1));
+        let rating_right_before: Rating = engine.player_rating_at(player, right_before);
+
+        let right_after = start_instant + (Duration::from_secs(1) + Duration::from_nanos(1));
+        let rating_right_after: Rating = engine.player_rating_at(player, right_after);
+
+        assert_approx_eq!(
+            rating_right_before.rating(),
+            rating_right_after.rating(),
+            0.000_000_001,
+        );
+        // Rating deviation is supposed to change over time.
+        // 2 nanoseconds won't change deviation much,
+        // but they theoretically can change it a little and it's fine
+        assert_approx_eq!(
+            rating_right_before.deviation(),
+            rating_right_after.deviation(),
+            0.000_000_001,
+        );
+        assert_approx_eq!(
+            rating_right_before.volatility(),
+            rating_right_after.volatility(),
+            0.000_000_001,
+        );
+    }
+
+    #[test]
+    fn test_time_change() {
+        // Setup similar to paper setup
+        let parameters = Parameters::default();
+
+        let start_instant = Instant::now();
+
+        let mut engine =
+            RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
+
+        let player = engine.register_player(Rating::default_from_parameters(parameters));
+
+        let rating_at_start: Rating = engine.player_rating_at(player, start_instant);
+        let rating_after_year: Rating = engine.player_rating_at(
+            player,
+            start_instant + Duration::from_secs(60 * 60 * 24 * 365),
+        );
+
+        // Deviation grows over time, rest should stay the same
+        assert_approx_eq!(
+            rating_at_start.rating(),
+            rating_after_year.rating(),
+            0.000_000_001,
+        );
+        // Adding one to make sure it grows somewhat significantly
+        // TODO: Make actual calculation on what deviation is expected
+        assert!(rating_at_start.deviation() + 1.0 < rating_after_year.deviation());
+        assert_approx_eq!(
+            rating_at_start.volatility(),
+            rating_after_year.volatility(),
+            0.000_000_001,
+        );
     }
 }
