@@ -16,7 +16,7 @@
 //! let parameters = Parameters::default().with_volatility_change(0.5);
 //!
 //! // Create our player's rating
-//! let player = Rating::new(1500.0, 200.0, 0.06);
+//! let mut player = Rating::new(1500.0, 200.0, 0.06);
 //!
 //! // Create our opponents
 //! // Their volatility is not specified in the paper and it doesn't matter in the calculation,
@@ -35,13 +35,13 @@
 //!     PlayerResult::new(opponent_c, 0.0),
 //! ];
 //!
-//! // Calculate new rating after 1.0 rating periods
-//! let new_rating = algorithm::rate_player(player, &results, 1.0, parameters);
+//! // Update rating after rating period
+//! algorithm::close_player_rating_period(&mut player, &results, parameters);
 //!
-//! // The results are close to the results from the paper.
-//! assert!((new_rating.rating() - 1464.06).abs() < 0.01);
-//! assert!((new_rating.deviation() - 151.52).abs() < 0.01);
-//! assert!((new_rating.volatility() - 0.05999).abs() < 0.0001);
+//! // The rating after the rating period are very close to the results from the paper
+//! assert!((player.rating() - 1464.06).abs() < 0.01);
+//! assert!((player.deviation() - 151.52).abs() < 0.01);
+//! assert!((player.volatility() - 0.05999).abs() < 0.0001);
 //! ```
 //!
 //! Different example using [`RatingEngine`][engine::RatingEngine]:
