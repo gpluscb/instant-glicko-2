@@ -510,8 +510,8 @@ mod test {
             PlayerResult::new(opponent_c, 0.0),
         ];
 
-        let new_rating: Rating = super::rate_player(player, results.as_ref(), 1.0, parameters)
-            .into_with_parameters(parameters);
+        let new_rating: Rating =
+            super::rate_player(player, &results, 1.0, parameters).into_with_parameters(parameters);
 
         assert_approx_eq!(new_rating.rating(), 1464.06, 0.01);
         assert_approx_eq!(new_rating.deviation(), 151.52, 0.01);

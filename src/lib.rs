@@ -36,7 +36,7 @@
 //! ];
 //!
 //! // Calculate new rating after 1.0 rating periods
-//! let new_rating = algorithm::rate_player(player, results.as_ref(), 1.0, parameters);
+//! let new_rating = algorithm::rate_player(player, &results, 1.0, parameters);
 //!
 //! // The results are close to the results from the paper.
 //! assert!((new_rating.rating() - 1464.06).abs() < 0.01);

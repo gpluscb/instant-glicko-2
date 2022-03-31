@@ -30,7 +30,7 @@ impl Player {
     /// The match results the player had in the current rating period.
     #[must_use]
     pub fn current_rating_period_results(&self) -> &[PlayerResult] {
-        self.current_rating_period_results.as_ref()
+        &self.current_rating_period_results
     }
 }
 
@@ -74,7 +74,7 @@ impl ScaledPlayer {
     /// The match results the player had in the current rating period.
     #[must_use]
     pub fn current_rating_period_results(&self) -> &[ScaledPlayerResult] {
-        self.current_rating_period_results.as_ref()
+        &self.current_rating_period_results
     }
 }
 
