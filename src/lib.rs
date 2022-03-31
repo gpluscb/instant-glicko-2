@@ -43,7 +43,7 @@
 //! assert!((new_rating.volatility() - 0.05999).abs() < 0.0001);
 //! ```
 //!
-//! Using [`RatingEngine`][engine::RatingEngine]:
+//! Different example using [`RatingEngine`][engine::RatingEngine]:
 //!
 //! ```
 //! use std::time::Duration;
