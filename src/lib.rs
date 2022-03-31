@@ -5,9 +5,9 @@
 //! This draws inspiration from the [rating system implementation](https://github.com/lichess-org/lila/tree/master/modules/rating/src/main/java/glicko2) for open-source chess website [Lichess](https://lichess.org),
 //! as well as two blogpost ([1](https://blog.hypersect.com/the-online-skill-ranking-of-inversus-deluxe/), [2](https://blog.hypersect.com/additional-thoughts-on-skill-ratings/)) by Ryan Juckett on skill ratings for [INVERSUS Deluxe](https://www.inversusgame.com/).
 //!
-//! # Example
+//! # Examples
 //!
-//! Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using [algorithm]:
+//! Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using [`algorithm`]:
 //!
 //! ```
 //! use instant_glicko_2::{Parameters, Rating};
