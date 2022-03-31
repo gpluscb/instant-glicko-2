@@ -11,11 +11,11 @@
 
 #![warn(clippy::pedantic)]
 #![warn(clippy::cargo)]
-// #![warn(
-//     missing_docs,
-//     rustdoc::missing_crate_level_docs,
-//     rustdoc::private_doc_tests
-// )] // TODO
+#![warn(
+    missing_docs,
+    rustdoc::missing_crate_level_docs,
+    rustdoc::private_doc_tests
+)]
 #![deny(
     rustdoc::broken_intra_doc_links,
     rustdoc::private_intra_doc_links,
