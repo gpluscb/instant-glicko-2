@@ -190,7 +190,7 @@ impl Parameters {
     ///
     /// # Arguments
     ///
-    /// * `start_rating` - The rating value a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_RATING`].
+    /// * `start_rating` - The rating value a new player starts out with. See also [`constants::DEFAULT_START_RATING`].
     /// * `volatility_change` - Also called "system constant" or "τ".
     /// This constant constraints change in volatility over time.
     /// Reasonable choices are between 0.3 and 1.2.
@@ -227,7 +227,7 @@ impl Parameters {
 
     /// The rating value a new player starts out with.
     ///
-    /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_RATING`].
+    /// See also [`constants::DEFAULT_START_RATING`].
     #[must_use]
     pub fn start_rating(&self) -> Rating {
         self.start_rating

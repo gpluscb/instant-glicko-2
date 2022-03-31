@@ -20,6 +20,20 @@ pub struct Player {
     current_rating_period_results: Vec<PlayerResult>,
 }
 
+impl Player {
+    /// The rating of this player at the start of the current rating period.
+    #[must_use]
+    pub fn rating(&self) -> Rating {
+        self.rating
+    }
+
+    /// The match results the player had in the current rating period.
+    #[must_use]
+    pub fn current_rating_period_results(&self) -> &[PlayerResult] {
+        self.current_rating_period_results.as_ref()
+    }
+}
+
 impl FromWithParameters<ScaledPlayer> for Player {
     fn from_with_parameters(scaled: ScaledPlayer, parameters: Parameters) -> Self {
         Player {
@@ -51,11 +65,13 @@ impl FromWithParameters<Player> for ScaledPlayer {
 }
 
 impl ScaledPlayer {
+    /// The rating of this player at the start of the current rating period.
     #[must_use]
     pub fn rating(&self) -> ScaledRating {
         self.rating
     }
 
+    /// The match results the player had in the current rating period.
     #[must_use]
     pub fn current_rating_period_results(&self) -> &[ScaledPlayerResult] {
         self.current_rating_period_results.as_ref()
@@ -71,6 +87,32 @@ pub struct RatingResult<S> {
 }
 
 impl<S> RatingResult<S> {
+    /// Creates a new [`RatingResult`] between the given players and with the given score.
+    /// See also: [`Score`]
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::time::Duration;
+    ///
+    /// use instant_glicko_2::{Parameters, Rating};
+    /// use instant_glicko_2::algorithm::MatchResult;
+    /// use instant_glicko_2::engine::{RatingEngine, RatingResult};
+    ///
+    /// let parameters = Parameters::default();
+    ///
+    /// let mut engine = RatingEngine::start_new(
+    ///     Duration::from_secs(60 * 60 * 24),
+    ///     Parameters::default(),
+    /// );
+    ///
+    /// let player_1 = engine.register_player(parameters.start_rating());
+    /// let player_2 = engine.register_player(parameters.start_rating());
+    ///
+    /// // `player_1` wins against `player_2`.
+    /// let result = RatingResult::new(player_1, player_2, MatchResult::Win);
+    /// engine.register_result(&result);
+    /// ```
     #[must_use]
     pub fn new(player_1: PlayerHandle, player_2: PlayerHandle, score: S) -> Self {
         RatingResult {
@@ -80,21 +122,25 @@ impl<S> RatingResult<S> {
         }
     }
 
+    /// The first match participant.
     #[must_use]
     pub fn player_1(&self) -> PlayerHandle {
         self.player_1
     }
 
+    /// The second match participant.
     #[must_use]
     pub fn player_2(&self) -> PlayerHandle {
         self.player_2
     }
 
+    /// The match score.
     #[must_use]
     pub fn score(&self) -> &S {
         &self.score
     }
 
+    /// The opponent of `player`, or [`None`] if `player` didn't participate in this match.
     #[must_use]
     pub fn opponent(&self, player: PlayerHandle) -> Option<PlayerHandle> {
         if self.player_1 == player {
@@ -106,6 +152,7 @@ impl<S> RatingResult<S> {
         }
     }
 
+    /// The score of `player`, or [`None`] if `player` didn't participate in this match.
     #[must_use]
     pub fn player_score(&self, player: PlayerHandle) -> Option<f64>
     where
@@ -120,6 +167,7 @@ impl<S> RatingResult<S> {
         }
     }
 
+    /// `true` if and only if `player` participated in this match.
     #[must_use]
     pub fn includes(&self, player: PlayerHandle) -> bool {
         self.player_1 == player || self.player_2 == player
