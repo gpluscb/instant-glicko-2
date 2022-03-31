@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::algorithm::{self, PlayerResult, ScaledPlayerResult, Score};
+use crate::algorithm::{self, PlayerResult, ScaledPlayerResult};
 use crate::util::PushOnlyVec;
 use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
@@ -78,6 +78,43 @@ impl ScaledPlayer {
     }
 }
 
+pub trait Score {
+    fn player_score(&self) -> f64;
+    fn opponent_score(&self) -> f64;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum MatchResult {
+    Win,
+    Draw,
+    Loss,
+}
+
+impl Score for MatchResult {
+    fn player_score(&self) -> f64 {
+        match self {
+            MatchResult::Win => 1.0,
+            MatchResult::Draw => 0.5,
+            MatchResult::Loss => 0.0,
+        }
+    }
+
+    fn opponent_score(&self) -> f64 {
+        self.invert().player_score()
+    }
+}
+
+impl MatchResult {
+    #[must_use]
+    pub fn invert(self) -> Self {
+        match self {
+            MatchResult::Win => MatchResult::Loss,
+            MatchResult::Draw => MatchResult::Draw,
+            MatchResult::Loss => MatchResult::Win,
+        }
+    }
+}
+
 /// A result of a match between two players managed by the same [`RatingEngine`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RatingResult<S> {
@@ -96,8 +133,7 @@ impl<S> RatingResult<S> {
     /// use std::time::Duration;
     ///
     /// use instant_glicko_2::{Parameters, Rating};
-    /// use instant_glicko_2::algorithm::MatchResult;
-    /// use instant_glicko_2::engine::{RatingEngine, RatingResult};
+    /// use instant_glicko_2::engine::{MatchResult, RatingEngine, RatingResult};
     ///
     /// let parameters = Parameters::default();
     ///
@@ -185,8 +221,7 @@ impl<S> RatingResult<S> {
 /// use std::time::Duration;
 ///
 /// use instant_glicko_2::{Parameters, Rating};
-/// use instant_glicko_2::algorithm::MatchResult;
-/// use instant_glicko_2::engine::{RatingEngine, RatingResult};
+/// use instant_glicko_2::engine::{MatchResult, RatingEngine, RatingResult};
 ///
 /// let parameters = Parameters::default();
 ///
@@ -469,8 +504,7 @@ impl RatingEngine {
 mod test {
     use std::time::{Duration, Instant};
 
-    use super::{RatingEngine, RatingResult};
-    use crate::algorithm::MatchResult;
+    use super::{MatchResult, RatingEngine, RatingResult};
     use crate::{Parameters, Rating};
 
     macro_rules! assert_approx_eq {

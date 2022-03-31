@@ -100,43 +100,6 @@ impl ScaledPlayerResult {
     }
 }
 
-pub trait Score {
-    fn player_score(&self) -> f64;
-    fn opponent_score(&self) -> f64;
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub enum MatchResult {
-    Win,
-    Draw,
-    Loss,
-}
-
-impl Score for MatchResult {
-    fn player_score(&self) -> f64 {
-        match self {
-            MatchResult::Win => 1.0,
-            MatchResult::Draw => 0.5,
-            MatchResult::Loss => 0.0,
-        }
-    }
-
-    fn opponent_score(&self) -> f64 {
-        self.invert().player_score()
-    }
-}
-
-impl MatchResult {
-    #[must_use]
-    pub fn invert(self) -> Self {
-        match self {
-            MatchResult::Win => MatchResult::Loss,
-            MatchResult::Draw => MatchResult::Draw,
-            MatchResult::Loss => MatchResult::Win,
-        }
-    }
-}
-
 /// This is a wrapper for [`generic_close_player_rating_period`].
 /// If you work with ratings that are not scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
 /// this function avoids you having to manually specify generic type parameters.
