@@ -24,6 +24,8 @@
 )]
 #![forbid(unsafe_code)]
 
+// TODO: Lots of const fn
+
 use constants::RATING_SCALING_RATIO;
 
 pub mod algorithm;
@@ -64,6 +66,7 @@ where
     }
 }
 
+/// A Glicko-2 skill rating.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Rating {
     rating: f64,
@@ -81,6 +84,8 @@ impl FromWithParameters<ScaledRating> for Rating {
 }
 
 impl Rating {
+    /// Creates a new [`Rating`] with the specified parameters.
+    ///  
     /// # Panics
     ///
     /// This function panics if `deviation` or `volatility` was <= 0.
@@ -96,6 +101,7 @@ impl Rating {
         }
     }
 
+    /// Creates a new rating with the starting values specified in `parameters`.
     #[must_use]
     pub fn default_from_parameters(parameters: Parameters) -> Self {
         Rating::new(
@@ -105,22 +111,27 @@ impl Rating {
         )
     }
 
+    /// The rating value.
     #[must_use]
     pub fn rating(&self) -> f64 {
         self.rating
     }
 
+    /// The rating deviation.
     #[must_use]
     pub fn deviation(&self) -> f64 {
         self.deviation
     }
 
+    /// The rating volatility.
     #[must_use]
     pub fn volatility(&self) -> f64 {
         self.volatility
     }
 }
 
+/// A Glicko-2 rating scaled to the internal rating scale.
+/// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ScaledRating {
     rating: f64,
@@ -138,6 +149,8 @@ impl FromWithParameters<Rating> for ScaledRating {
 }
 
 impl ScaledRating {
+    /// Creates a new [`ScaledRating`] with the specified parameters.
+    ///
     /// # Panics
     ///
     /// This function panics if `deviation` or `volatility` was <= 0.
@@ -153,44 +166,59 @@ impl ScaledRating {
         }
     }
 
+    /// The rating value.
     #[must_use]
     pub fn rating(&self) -> f64 {
         self.rating
     }
 
+    /// The rating deviation.
     #[must_use]
     pub fn deviation(&self) -> f64 {
         self.deviation
     }
 
+    /// The rating volatility.
     #[must_use]
     pub fn volatility(&self) -> f64 {
         self.volatility
     }
 }
 
+/// The parameters used by the Glicko-2 algorithm.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Parameters {
+    // TODO: Private fields
     pub start_rating: f64,
     pub start_deviation: f64,
     pub start_volatility: f64,
-    /// Also called "system constant" or "τ".
-    /// This constant constraints change in volatility over time.
-    /// Reasonable choices are between 0.3 and 1.2.
-    /// Small values prevent volatility and therefore rating from changing too much after improbable results.
-    ///
-    /// See also "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
     pub volatility_change: f64,
     pub convergence_tolerance: f64,
 }
 
 impl Parameters {
+    /// Creates [`Parameters`] with the given parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_rating` - The rating value a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_RATING`].
+    /// * `start_deviation` - The rating deviation a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_DEVIATION`].
+    /// * `start_volatility` - The rating volatility a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_VOLATILITY`].
+    /// * `volatility_change` - Also called "system constant" or "τ".
+    /// This constant constraints change in volatility over time.
+    /// Reasonable choices are between 0.3 and 1.2.
+    /// Small values prevent volatility and therefore rating from changing too much after improbable results.
+    /// See also "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) and [`constants::DEFAULT_VOLATILITY_CHANGE`].
+    /// * `convergence_tolerance` - The cutoff value for the converging loop algorithm in "Step 5.1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
+    /// See also [`constants::DEFAULT_CONVERGENCE_TOLERANCE`].
+    ///
     /// # Panics
     ///
     /// This function panics if `start_deviation`, `start_volatility`, or `convergence_tolerance` was <= 0.
     #[must_use]
     #[allow(clippy::too_many_arguments)] // TODO: Maybe builder pattern idk?
     pub fn new(
+        // TODO: Collapse rating, deviation, volatility into Rating
         start_rating: f64,
         start_deviation: f64,
         start_volatility: f64,
@@ -219,12 +247,56 @@ impl Parameters {
         }
     }
 
+    /// Creates [`Parameters`] with the same parameters as `self`, only changing the volatility change to `volatility_change`.
     #[must_use]
     pub fn with_volatility_change(self, volatility_change: f64) -> Self {
         Parameters {
             volatility_change,
             ..self
         }
+    }
+
+    /// The rating value a new player starts out with.
+    ///
+    /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_RATING`].
+    #[must_use]
+    pub fn start_rating(&self) -> f64 {
+        self.start_rating
+    }
+
+    /// The rating deviation a new player starts out with.
+    ///
+    /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_DEVIATION`].
+    #[must_use]
+    pub fn start_deviation(&self) -> f64 {
+        self.start_deviation
+    }
+
+    /// The rating volatility a new player starts out with.
+    ///
+    /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_VOLATILITY`].
+    #[must_use]
+    pub fn start_volatility(&self) -> f64 {
+        self.start_volatility
+    }
+
+    /// `volatility_change` - Also called "system constant" or "τ".
+    /// This constant constraints change in volatility over time.
+    /// Reasonable choices are between 0.3 and 1.2.
+    /// Small values prevent volatility and therefore rating from changing too much after improbable results.
+    ///
+    /// See also "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) and [`constants::DEFAULT_VOLATILITY_CHANGE`].
+    #[must_use]
+    pub fn volatility_change(&self) -> f64 {
+        self.volatility_change
+    }
+
+    /// The cutoff value for the converging loop algorithm in "Step 5.1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
+    ///
+    /// See also [`constants::DEFAULT_CONVERGENCE_TOLERANCE`].
+    #[must_use]
+    pub fn convergence_tolerance(&self) -> f64 {
+        self.convergence_tolerance
     }
 }
 
@@ -236,7 +308,7 @@ impl Default for Parameters {
             start_deviation: constants::DEFAULT_START_DEVIATION,
             start_volatility: constants::DEFAULT_START_VOLATILITY,
             volatility_change: constants::DEFAULT_VOLATILITY_CHANGE,
-            convergence_tolerance: constants::CONVERGENCE_TOLERANCE,
+            convergence_tolerance: constants::DEFAULT_CONVERGENCE_TOLERANCE,
         }
     }
 }

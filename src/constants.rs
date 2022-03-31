@@ -19,4 +19,4 @@ pub const DEFAULT_VOLATILITY_CHANGE: f64 = 0.75;
 
 /// Default cutoff value for the converging loop algorithm as recommended by "Step 5.1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
 /// Higher values may result in slightly better performance at the cost of less accuracy.
-pub const CONVERGENCE_TOLERANCE: f64 = 0.000_001;
+pub const DEFAULT_CONVERGENCE_TOLERANCE: f64 = 0.000_001;
