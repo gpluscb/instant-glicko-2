@@ -238,7 +238,7 @@ impl<S> RatingResult<S> {
 ///
 /// let parameters = Parameters::default();
 ///
-/// // Create RatingEngine with one day rating period duration
+/// // Create a RatingEngine with a one day rating period duration
 /// // The first rating period starts instantly
 /// let mut engine = RatingEngine::start_new(
 ///     Duration::from_secs(60 * 60 * 24),

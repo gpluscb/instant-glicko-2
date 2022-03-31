@@ -48,6 +48,26 @@ impl FromWithParameters<Vec<ScaledPlayerResult>> for Vec<PlayerResult> {
     }
 }
 
+impl PlayerResult {
+    /// Creates a new [`PlayerResult`] with the given `opponent` and and the player's `score`.
+    #[must_use]
+    pub fn new(opponent: Rating, score: f64) -> Self {
+        PlayerResult { opponent, score }
+    }
+
+    /// The opponent's rating.
+    #[must_use]
+    pub fn opponent(&self) -> Rating {
+        self.opponent
+    }
+
+    /// The player's score.
+    #[must_use]
+    pub fn score(&self) -> f64 {
+        self.score
+    }
+}
+
 /// A match result as it pertains to a specific player with all fields scaled to the internal Glicko-2 scale.
 /// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
 ///
@@ -485,18 +505,9 @@ mod test {
         let opponent_c = Rating::new(1700.0, 300.0, parameters.start_rating().volatility());
 
         let results = [
-            PlayerResult {
-                opponent: opponent_a,
-                score: 1.0,
-            },
-            PlayerResult {
-                opponent: opponent_b,
-                score: 0.0,
-            },
-            PlayerResult {
-                opponent: opponent_c,
-                score: 0.0,
-            },
+            PlayerResult::new(opponent_a, 1.0),
+            PlayerResult::new(opponent_b, 0.0),
+            PlayerResult::new(opponent_c, 0.0),
         ];
 
         let new_rating: Rating = super::rate_player(player, results.as_ref(), 1.0, parameters)
