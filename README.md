@@ -37,6 +37,7 @@ let results = [
     PlayerResult::new(opponent_c, 0.0),
 ];
 
+// Calculate new rating after 1.0 rating periods
 let new_rating = algorithm::rate_player(player, results.as_ref(), 1.0, parameters);
 
 // The results are close to the results from the paper.
