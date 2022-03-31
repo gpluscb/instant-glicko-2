@@ -180,7 +180,7 @@ impl<S> RatingResult<S> {
     }
 }
 
-/// This is just a wrapper for [`generic_close_player_rating_period`].
+/// This is a wrapper for [`generic_close_player_rating_period`].
 /// If you work with ratings that are not scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
 /// this function avoids you having to manually specify generic type parameters.
 ///
@@ -193,7 +193,7 @@ pub fn close_player_rating_period(
     generic_close_player_rating_period::<_, _, Box<_>>(player_rating, results, parameters);
 }
 
-/// This is just a wrapper for [`generic_close_player_rating_period`].
+/// This is a wrapper for [`generic_close_player_rating_period`].
 /// If you work with ratings that are scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
 /// this function avoids you having to manually specify generic type parameters.
 ///
@@ -227,7 +227,7 @@ pub fn generic_close_player_rating_period<Rating, Results, ResultsSlice>(
     *player_rating = generic_rate_player(*player_rating, results, 1.0, parameters);
 }
 
-/// This is just a wrapper for [`generic_rate_player`].
+/// This is a wrapper for [`generic_rate_player`].
 /// If you work with ratings that are not scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
 /// this function avoids you having to manually specify generic type parameters.
 ///
@@ -242,7 +242,7 @@ pub fn rate_player(
     generic_rate_player::<_, _, _, Box<_>>(player_rating, results, elapsed_periods, parameters)
 }
 
-/// This is just a wrapper for [`generic_rate_player`].
+/// This is a wrapper for [`generic_rate_player`].
 /// If you work with ratings that are scaled to the internal Glicko-2 scale (see "Step 2." and "Step 8." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf)),
 /// this function avoids you having to manually specify generic type parameters.
 ///

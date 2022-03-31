@@ -29,7 +29,10 @@ pub struct ScaledPlayer {
 ///
 /// // Create RatingEngine with one day rating period duration
 /// // The first rating period starts instantly
-/// let mut engine = RatingEngine::start_new(Duration::from_secs(60 * 60 * 24), Parameters::default());
+/// let mut engine = RatingEngine::start_new(
+///     Duration::from_secs(60 * 60 * 24),
+///     Parameters::default(),
+/// );
 ///
 /// // Register two players
 /// // The first player is relatively strong
