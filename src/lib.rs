@@ -188,12 +188,11 @@ impl ScaledRating {
 /// The parameters used by the Glicko-2 algorithm.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Parameters {
-    // TODO: Private fields
-    pub start_rating: f64,
-    pub start_deviation: f64,
-    pub start_volatility: f64,
-    pub volatility_change: f64,
-    pub convergence_tolerance: f64,
+    start_rating: f64,
+    start_deviation: f64,
+    start_volatility: f64,
+    volatility_change: f64,
+    convergence_tolerance: f64,
 }
 
 impl Parameters {
