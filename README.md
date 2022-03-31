@@ -9,6 +9,11 @@ as well as two blogpost ([1](https://blog.hypersect.com/the-online-skill-ranking
 
 Documentation for the crate can be found on [Docs.rs](https://docs.rs/instant-glicko-2/latest/instant_glicko_2/).
 
+To use this as a dependency, add the following line to your `Cargo.toml` dependencies:
+```toml
+instant-glicko-2 = "0.1.0"
+```
+
 # Examples
 
 Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using `algorithm`:
