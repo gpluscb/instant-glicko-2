@@ -317,14 +317,35 @@ impl RatingEngine {
         }
     }
 
+    /// The rating period duration.
+    #[must_use]
+    pub fn rating_period_duration(&self) -> Duration {
+        self.rating_period_duration
+    }
+
+    /// The start of the last opened rating period.
+    #[must_use]
+    pub fn last_rating_period_start(&self) -> Instant {
+        self.last_rating_period_start
+    }
+
+    /// The parameters.
+    #[must_use]
+    pub fn parameters(&self) -> Parameters {
+        self.parameters
+    }
+
+    /// Returns an [`Iterator`] over all registered players.
+    pub fn players(&self) -> impl Iterator<Item = PlayerHandle> {
+        (0..self.managed_players.vec().len()).map(PlayerHandle)
+    }
+
     /// Registers a new player with a given rating to this engine.
     ///
     /// # Returns
     ///
     /// Returns a value that can be later used to identify this player with this engine
     /// to get their ratings.
-
-    // TODO: Newtype for index, maybe some better support in crate::utils
     pub fn register_player<R>(&mut self, rating: R) -> PlayerHandle
     where
         R: IntoWithParameters<ScaledRating>,
