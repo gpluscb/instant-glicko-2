@@ -11,7 +11,7 @@ as well as two blogpost ([1](https://blog.hypersect.com/the-online-skill-ranking
 
 Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using `algorithm`:
 
-```rs
+```rust
 use instant_glicko_2::{Parameters, Rating};
 use instant_glicko_2::algorithm::{self, PlayerResult};
 
@@ -48,7 +48,7 @@ assert!((new_rating.volatility() - 0.05999).abs() < 0.0001);
 
 Different example using `RatingEngine`:
 
-```rs
+```rust
 use std::time::Duration;
 
 use instant_glicko_2::{Parameters, Rating};
