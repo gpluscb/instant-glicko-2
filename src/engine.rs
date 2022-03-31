@@ -408,7 +408,10 @@ impl RatingEngine {
         self.player_rating_at(player, Instant::now())
     }
 
-    /// Returns a player
+    /// Calculates a player's rating at a given point in time.
+    /// The calculation is based on the registered results for this player (see [`register_result`][Self::register_result]).
+    /// Note that this function is not cheap.
+    /// The rating deviation of this result also depends on the current time, because rating deviation increases with time.
     ///
     /// This function is meant mostly for testability.
     ///
