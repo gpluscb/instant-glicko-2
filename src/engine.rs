@@ -6,9 +6,15 @@ use crate::algorithm::{self, PlayerResult, ScaledPlayerResult, Score};
 use crate::util::PushOnlyVec;
 use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
+/// An opaque index pointing to a player.
+/// This is handed out by [`RatingEngine`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PlayerHandle(usize);
 
+/// A player as managed by [`RatingEngine`].
+
+// TODO: Should this be public or even exist?
+#[derive(Clone, PartialEq, Debug)]
 pub struct Player {
     rating: Rating,
     current_rating_period_results: Vec<PlayerResult>,
@@ -25,6 +31,9 @@ impl FromWithParameters<ScaledPlayer> for Player {
     }
 }
 
+/// A player as managed by [`RatingEngine`] with all values scaled to the internal rating scale.
+/// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
+#[derive(Clone, PartialEq, Debug)]
 pub struct ScaledPlayer {
     rating: ScaledRating,
     current_rating_period_results: Vec<ScaledPlayerResult>,
@@ -53,6 +62,7 @@ impl ScaledPlayer {
     }
 }
 
+/// A result of a match between two players managed by the same [`RatingEngine`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct RatingResult<S> {
     player_1: PlayerHandle,
@@ -170,6 +180,7 @@ impl<S> RatingResult<S> {
 
 // In this case, just engine::Rating does not tell enough about the purpose of the struct in my opinion.
 #[allow(clippy::module_name_repetitions)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct RatingEngine {
     rating_period_duration: Duration,
     last_rating_period_start: Instant,
