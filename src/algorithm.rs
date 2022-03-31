@@ -5,6 +5,10 @@ use std::f64::consts::PI;
 
 use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
+/// A match result as it pertains to a specific player.
+///
+/// This struct only holds the opponent's rating, and the player's score.
+/// The player's rating is stored outside of this struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PlayerResult {
     opponent: Rating,
@@ -44,6 +48,11 @@ impl FromWithParameters<Vec<ScaledPlayerResult>> for Vec<PlayerResult> {
     }
 }
 
+/// A match result as it pertains to a specific player with all fields scaled to the internal Glicko-2 scale.
+/// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
+///
+/// This struct only holds the opponent's rating, and the player's score.
+/// The player's rating is stored outside of this struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ScaledPlayerResult {
     opponent: ScaledRating,
@@ -84,16 +93,19 @@ impl FromWithParameters<Vec<PlayerResult>> for Vec<ScaledPlayerResult> {
 }
 
 impl ScaledPlayerResult {
+    /// Creates a new [`ScaledPlayerResult`] with the given `opponent` and and the player's `score`.
     #[must_use]
     pub fn new(opponent: ScaledRating, score: f64) -> Self {
         ScaledPlayerResult { opponent, score }
     }
 
+    /// The opponent's rating.
     #[must_use]
     pub fn opponent(&self) -> ScaledRating {
         self.opponent
     }
 
+    /// The player's score.
     #[must_use]
     pub fn score(&self) -> f64 {
         self.score
