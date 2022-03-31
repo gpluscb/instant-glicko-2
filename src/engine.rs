@@ -78,15 +78,27 @@ impl ScaledPlayer {
     }
 }
 
+/// A score of a match between a player and an opponent.
 pub trait Score {
+    /// The player score.
+    /// Should be between 0.0 (loss) and 1.0 (win).
     fn player_score(&self) -> f64;
+    /// The oppoent score.
+    /// Should be between 0.0 (loss) and 1.0 (win).
     fn opponent_score(&self) -> f64;
 }
 
+/// A simple match result.
+/// Can be `Win`, `Draw`, or `Loss`.
+///
+/// Implements [`Score`] with a `Win` being 1.0 points, a `Loss` being 0.0 points, and a `Draw` being 0.5 points.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum MatchResult {
+    /// The player won.
     Win,
+    /// The players drew.
     Draw,
+    /// The opponent won.
     Loss,
 }
 
@@ -105,6 +117,7 @@ impl Score for MatchResult {
 }
 
 impl MatchResult {
+    /// Returns a [`MatchResult`] for the opponent.
     #[must_use]
     pub fn invert(self) -> Self {
         match self {
