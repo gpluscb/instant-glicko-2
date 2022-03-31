@@ -332,14 +332,12 @@ mod test {
 
         let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
 
-        // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
-        // Constructor asserts it to be > 0.0
         let opponent_a =
-            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility));
+            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility()));
         let opponent_b =
-            engine.register_player(Rating::new(1550.0, 100.0, parameters.start_volatility));
+            engine.register_player(Rating::new(1550.0, 100.0, parameters.start_volatility()));
         let opponent_c =
-            engine.register_player(Rating::new(1700.0, 300.0, parameters.start_volatility));
+            engine.register_player(Rating::new(1700.0, 300.0, parameters.start_volatility()));
 
         engine.register_result(&RatingResult::new(player, opponent_a, MatchResult::Win));
         engine.register_result(&RatingResult::new(player, opponent_b, MatchResult::Loss));
@@ -367,7 +365,7 @@ mod test {
         let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
 
         let opponent =
-            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility));
+            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility()));
 
         engine.register_result(&RatingResult::new(player, opponent, MatchResult::Win));
 

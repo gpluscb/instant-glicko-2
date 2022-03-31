@@ -399,7 +399,7 @@ fn calculate_new_volatility(
 
     let estimated_improvement_sq = estimated_improvement * estimated_improvement;
 
-    let volatility_change = parameters.volatility_change;
+    let volatility_change = parameters.volatility_change();
 
     // 1.
     let a = f64::ln(current_volatility * current_volatility);
@@ -449,7 +449,7 @@ fn calculate_new_volatility(
 
     // 4.
     // TODO: iterations cap -> panic or something?
-    while f64::abs(b - a) > parameters.convergence_tolerance {
+    while f64::abs(b - a) > parameters.convergence_tolerance() {
         // (a)
         let c = a + (a - b) * f_a / (f_b - f_a);
         let f_c = f(c);
@@ -548,9 +548,9 @@ mod test {
 
         // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
         // Constructor asserts it to be > 0.0
-        let opponent_a = Rating::new(1400.0, 30.0, parameters.start_volatility);
-        let opponent_b = Rating::new(1550.0, 100.0, parameters.start_volatility);
-        let opponent_c = Rating::new(1700.0, 300.0, parameters.start_volatility);
+        let opponent_a = Rating::new(1400.0, 30.0, parameters.start_volatility());
+        let opponent_b = Rating::new(1550.0, 100.0, parameters.start_volatility());
+        let opponent_c = Rating::new(1700.0, 300.0, parameters.start_volatility());
 
         let results = [
             PlayerResult {
