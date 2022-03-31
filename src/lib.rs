@@ -76,10 +76,11 @@ pub struct Rating {
 
 impl FromWithParameters<ScaledRating> for Rating {
     fn from_with_parameters(scaled: ScaledRating, parameters: Parameters) -> Self {
-        let public_rating = scaled.rating * RATING_SCALING_RATIO + parameters.start_rating;
-        let public_deviation = scaled.deviation * RATING_SCALING_RATIO;
+        let public_rating =
+            scaled.rating() * RATING_SCALING_RATIO + parameters.start_rating().rating();
+        let public_deviation = scaled.deviation() * RATING_SCALING_RATIO;
 
-        Rating::new(public_rating, public_deviation, scaled.volatility)
+        Rating::new(public_rating, public_deviation, scaled.volatility())
     }
 }
 
@@ -99,16 +100,6 @@ impl Rating {
             deviation,
             volatility,
         }
-    }
-
-    /// Creates a new rating with the starting values specified in `parameters`.
-    #[must_use]
-    pub fn default_from_parameters(parameters: Parameters) -> Self {
-        Rating::new(
-            parameters.start_rating,
-            parameters.start_deviation,
-            parameters.start_volatility,
-        )
     }
 
     /// The rating value.
@@ -141,10 +132,11 @@ pub struct ScaledRating {
 
 impl FromWithParameters<Rating> for ScaledRating {
     fn from_with_parameters(rating: Rating, parameters: Parameters) -> Self {
-        let scaled_rating = (rating.rating - parameters.start_rating) / RATING_SCALING_RATIO;
-        let scaled_deviation = rating.deviation / RATING_SCALING_RATIO;
+        let scaled_rating =
+            (rating.rating() - parameters.start_rating().rating()) / RATING_SCALING_RATIO;
+        let scaled_deviation = rating.deviation() / RATING_SCALING_RATIO;
 
-        ScaledRating::new(scaled_rating, scaled_deviation, rating.volatility)
+        ScaledRating::new(scaled_rating, scaled_deviation, rating.volatility())
     }
 }
 
@@ -188,9 +180,7 @@ impl ScaledRating {
 /// The parameters used by the Glicko-2 algorithm.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Parameters {
-    start_rating: f64,
-    start_deviation: f64,
-    start_volatility: f64,
+    start_rating: Rating,
     volatility_change: f64,
     convergence_tolerance: f64,
 }
@@ -201,8 +191,6 @@ impl Parameters {
     /// # Arguments
     ///
     /// * `start_rating` - The rating value a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_RATING`].
-    /// * `start_deviation` - The rating deviation a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_DEVIATION`].
-    /// * `start_volatility` - The rating volatility a new player starts out with. See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_VOLATILITY`].
     /// * `volatility_change` - Also called "system constant" or "τ".
     /// This constant constraints change in volatility over time.
     /// Reasonable choices are between 0.3 and 1.2.
@@ -213,25 +201,9 @@ impl Parameters {
     ///
     /// # Panics
     ///
-    /// This function panics if `start_deviation`, `start_volatility`, or `convergence_tolerance` was <= 0.
+    /// This function panics if `convergence_tolerance` was <= 0.
     #[must_use]
-    #[allow(clippy::too_many_arguments)] // TODO: Maybe builder pattern idk?
-    pub fn new(
-        // TODO: Collapse rating, deviation, volatility into Rating
-        start_rating: f64,
-        start_deviation: f64,
-        start_volatility: f64,
-        volatility_change: f64,
-        convergence_tolerance: f64,
-    ) -> Self {
-        assert!(
-            start_deviation > 0.0,
-            "start_deviation <= 0: {start_deviation}"
-        );
-        assert!(
-            start_volatility > 0.0,
-            "start_volatility <= 0: {start_volatility}"
-        );
+    pub fn new(start_rating: Rating, volatility_change: f64, convergence_tolerance: f64) -> Self {
         assert!(
             convergence_tolerance > 0.0,
             "convergence_tolerance <= 0: {convergence_tolerance}"
@@ -239,8 +211,6 @@ impl Parameters {
 
         Parameters {
             start_rating,
-            start_deviation,
-            start_volatility,
             volatility_change,
             convergence_tolerance,
         }
@@ -259,24 +229,8 @@ impl Parameters {
     ///
     /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_RATING`].
     #[must_use]
-    pub fn start_rating(&self) -> f64 {
+    pub fn start_rating(&self) -> Rating {
         self.start_rating
-    }
-
-    /// The rating deviation a new player starts out with.
-    ///
-    /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_DEVIATION`].
-    #[must_use]
-    pub fn start_deviation(&self) -> f64 {
-        self.start_deviation
-    }
-
-    /// The rating volatility a new player starts out with.
-    ///
-    /// See also [`Rating::default_from_parameters`], [`constants::DEFAULT_START_VOLATILITY`].
-    #[must_use]
-    pub fn start_volatility(&self) -> f64 {
-        self.start_volatility
     }
 
     /// `volatility_change` - Also called "system constant" or "τ".
@@ -304,8 +258,6 @@ impl Default for Parameters {
     fn default() -> Self {
         Parameters {
             start_rating: constants::DEFAULT_START_RATING,
-            start_deviation: constants::DEFAULT_START_DEVIATION,
-            start_volatility: constants::DEFAULT_START_VOLATILITY,
             volatility_change: constants::DEFAULT_VOLATILITY_CHANGE,
             convergence_tolerance: constants::DEFAULT_CONVERGENCE_TOLERANCE,
         }

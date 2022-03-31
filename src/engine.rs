@@ -2,13 +2,118 @@
 
 use std::time::{Duration, Instant};
 
-use crate::algorithm::{self, RatingResult, ScaledPlayerResult, Score};
+use crate::algorithm::{self, PlayerResult, ScaledPlayerResult, Score};
 use crate::util::PushOnlyVec;
-use crate::{FromWithParameters, IntoWithParameters, Parameters, ScaledRating};
+use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct PlayerHandle(usize);
+
+pub struct Player {
+    rating: Rating,
+    current_rating_period_results: Vec<PlayerResult>,
+}
+
+impl FromWithParameters<ScaledPlayer> for Player {
+    fn from_with_parameters(scaled: ScaledPlayer, parameters: Parameters) -> Self {
+        Player {
+            rating: scaled.rating.into_with_parameters(parameters),
+            current_rating_period_results: scaled
+                .current_rating_period_results
+                .into_with_parameters(parameters),
+        }
+    }
+}
 
 pub struct ScaledPlayer {
     rating: ScaledRating,
     current_rating_period_results: Vec<ScaledPlayerResult>,
+}
+
+impl FromWithParameters<Player> for ScaledPlayer {
+    fn from_with_parameters(player: Player, parameters: Parameters) -> Self {
+        ScaledPlayer {
+            rating: player.rating.into_with_parameters(parameters),
+            current_rating_period_results: player
+                .current_rating_period_results
+                .into_with_parameters(parameters),
+        }
+    }
+}
+
+impl ScaledPlayer {
+    #[must_use]
+    pub fn rating(&self) -> ScaledRating {
+        self.rating
+    }
+
+    #[must_use]
+    pub fn current_rating_period_results(&self) -> &[ScaledPlayerResult] {
+        self.current_rating_period_results.as_ref()
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct RatingResult<S> {
+    player_1: PlayerHandle,
+    player_2: PlayerHandle,
+    score: S,
+}
+
+impl<S> RatingResult<S> {
+    #[must_use]
+    pub fn new(player_1: PlayerHandle, player_2: PlayerHandle, score: S) -> Self {
+        RatingResult {
+            player_1,
+            player_2,
+            score,
+        }
+    }
+
+    #[must_use]
+    pub fn player_1(&self) -> PlayerHandle {
+        self.player_1
+    }
+
+    #[must_use]
+    pub fn player_2(&self) -> PlayerHandle {
+        self.player_2
+    }
+
+    #[must_use]
+    pub fn score(&self) -> &S {
+        &self.score
+    }
+
+    #[must_use]
+    pub fn opponent(&self, player: PlayerHandle) -> Option<PlayerHandle> {
+        if self.player_1 == player {
+            Some(self.player_2)
+        } else if self.player_2 == player {
+            Some(self.player_1)
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn player_score(&self, player: PlayerHandle) -> Option<f64>
+    where
+        S: Score,
+    {
+        if self.player_1 == player {
+            Some(self.score.player_score())
+        } else if self.player_2 == player {
+            Some(self.score.opponent_score())
+        } else {
+            None
+        }
+    }
+
+    #[must_use]
+    pub fn includes(&self, player: PlayerHandle) -> bool {
+        self.player_1 == player || self.player_2 == player
+    }
 }
 
 /// Struct for managing player ratings and calculating them based on match results.
@@ -22,8 +127,8 @@ pub struct ScaledPlayer {
 /// use std::time::Duration;
 ///
 /// use instant_glicko_2::{Parameters, Rating};
-/// use instant_glicko_2::algorithm::{MatchResult, RatingResult};
-/// use instant_glicko_2::engine::RatingEngine;
+/// use instant_glicko_2::algorithm::MatchResult;
+/// use instant_glicko_2::engine::{RatingEngine, RatingResult};
 ///
 /// let parameters = Parameters::default();
 ///
@@ -39,7 +144,7 @@ pub struct ScaledPlayer {
 /// let player_1_rating_old = Rating::new(1700.0, 300.0, 0.06);
 /// let player_1 = engine.register_player(player_1_rating_old);
 /// // The second player hasn't played any games
-/// let player_2_rating_old = Rating::default_from_parameters(parameters);
+/// let player_2_rating_old = parameters.start_rating();
 /// let player_2 = engine.register_player(player_2_rating_old);
 ///
 /// // They play and player_2 wins
@@ -113,7 +218,7 @@ impl RatingEngine {
     /// to get their ratings.
 
     // TODO: Newtype for index, maybe some better support in crate::utils
-    pub fn register_player<R>(&mut self, rating: R) -> usize
+    pub fn register_player<R>(&mut self, rating: R) -> PlayerHandle
     where
         R: IntoWithParameters<ScaledRating>,
     {
@@ -126,7 +231,7 @@ impl RatingEngine {
             current_rating_period_results: Vec::new(),
         });
 
-        index
+        PlayerHandle(index)
     }
 
     /// Registers a result in the current rating period.
@@ -138,6 +243,9 @@ impl RatingEngine {
     ///
     /// This function might panic if the `result`'s players do not come from this `RatingEngine`.
     pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) {
+        let player_1_idx = result.player_1().0;
+        let player_2_idx = result.player_2().0;
+
         // We have to maybe close so the results will be added in the right rating period.
         self.maybe_close_rating_periods();
 
@@ -145,19 +253,19 @@ impl RatingEngine {
         let player_1_rating = self
             .managed_players
             .vec()
-            .get(result.player_1_idx())
+            .get(player_1_idx)
             .expect("Result didn't belong to this RatingEngine")
             .rating;
 
         let player_2_rating = self
             .managed_players
             .vec()
-            .get(result.player_2_idx())
+            .get(player_2_idx)
             .expect("Result didn't belong to this RatingEngine")
             .rating;
 
         self.managed_players
-            .get_mut(result.player_1_idx())
+            .get_mut(player_1_idx)
             .unwrap()
             .current_rating_period_results
             .push(ScaledPlayerResult::new(
@@ -166,7 +274,7 @@ impl RatingEngine {
             ));
 
         self.managed_players
-            .get_mut(result.player_2_idx())
+            .get_mut(player_2_idx)
             .unwrap()
             .current_rating_period_results
             .push(ScaledPlayerResult::new(
@@ -184,13 +292,13 @@ impl RatingEngine {
     ///
     /// # Panics
     ///
-    /// This function might panic or return a meaningless result if `player_idx` wasn't sourced from this [`RatingEngine`].
+    /// This function might panic or return a meaningless result if `player` wasn't sourced from this [`RatingEngine`].
     #[must_use]
-    pub fn player_rating<R>(&mut self, player_idx: usize) -> R
+    pub fn player_rating<R>(&mut self, player: PlayerHandle) -> R
     where
         R: FromWithParameters<ScaledRating>,
     {
-        self.player_rating_at(player_idx, Instant::now())
+        self.player_rating_at(player, Instant::now())
     }
 
     /// Returns a player
@@ -203,7 +311,7 @@ impl RatingEngine {
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
     #[must_use]
-    pub fn player_rating_at<R>(&mut self, player_idx: usize, time: Instant) -> R
+    pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: Instant) -> R
     where
         R: FromWithParameters<ScaledRating>,
     {
@@ -212,7 +320,7 @@ impl RatingEngine {
         let player = self
             .managed_players
             .vec()
-            .get(player_idx)
+            .get(player.0)
             .expect("Player index didn't belong to this RatingEngine");
 
         algorithm::rate_player_scaled(
@@ -302,8 +410,8 @@ impl RatingEngine {
 mod test {
     use std::time::{Duration, Instant};
 
-    use super::RatingEngine;
-    use crate::algorithm::{MatchResult, RatingResult};
+    use super::{RatingEngine, RatingResult};
+    use crate::algorithm::MatchResult;
     use crate::{Parameters, Rating};
 
     macro_rules! assert_approx_eq {
@@ -332,12 +440,21 @@ mod test {
 
         let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
 
-        let opponent_a =
-            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility()));
-        let opponent_b =
-            engine.register_player(Rating::new(1550.0, 100.0, parameters.start_volatility()));
-        let opponent_c =
-            engine.register_player(Rating::new(1700.0, 300.0, parameters.start_volatility()));
+        let opponent_a = engine.register_player(Rating::new(
+            1400.0,
+            30.0,
+            parameters.start_rating().volatility(),
+        ));
+        let opponent_b = engine.register_player(Rating::new(
+            1550.0,
+            100.0,
+            parameters.start_rating().volatility(),
+        ));
+        let opponent_c = engine.register_player(Rating::new(
+            1700.0,
+            300.0,
+            parameters.start_rating().volatility(),
+        ));
 
         engine.register_result(&RatingResult::new(player, opponent_a, MatchResult::Win));
         engine.register_result(&RatingResult::new(player, opponent_b, MatchResult::Loss));
@@ -364,8 +481,11 @@ mod test {
 
         let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
 
-        let opponent =
-            engine.register_player(Rating::new(1400.0, 30.0, parameters.start_volatility()));
+        let opponent = engine.register_player(Rating::new(
+            1400.0,
+            30.0,
+            parameters.start_rating().volatility(),
+        ));
 
         engine.register_result(&RatingResult::new(player, opponent, MatchResult::Win));
 
@@ -411,7 +531,7 @@ mod test {
         let mut engine =
             RatingEngine::start_new_at(Duration::from_secs(60 * 60), start_instant, parameters);
 
-        let player = engine.register_player(Rating::default_from_parameters(parameters));
+        let player = engine.register_player(parameters.start_rating());
 
         let rating_at_start: Rating = engine.player_rating_at(player, start_instant);
         let rating_after_year: Rating = engine.player_rating_at(

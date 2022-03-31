@@ -33,6 +33,15 @@ impl<const N: usize> FromWithParameters<[ScaledPlayerResult; N]> for [PlayerResu
     }
 }
 
+impl FromWithParameters<Vec<ScaledPlayerResult>> for Vec<PlayerResult> {
+    fn from_with_parameters(scaled: Vec<ScaledPlayerResult>, parameters: Parameters) -> Self {
+        scaled
+            .into_iter()
+            .map(|s| s.into_with_parameters(parameters))
+            .collect()
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct ScaledPlayerResult {
     opponent: ScaledRating,
@@ -49,17 +58,26 @@ impl FromWithParameters<PlayerResult> for ScaledPlayerResult {
 }
 
 impl FromWithParameters<&'_ [PlayerResult]> for Box<[ScaledPlayerResult]> {
-    fn from_with_parameters(scaled: &'_ [PlayerResult], parameters: Parameters) -> Self {
-        scaled
+    fn from_with_parameters(results: &'_ [PlayerResult], parameters: Parameters) -> Self {
+        results
             .iter()
-            .map(|&s| s.into_with_parameters(parameters))
+            .map(|&r| r.into_with_parameters(parameters))
             .collect()
     }
 }
 
 impl<const N: usize> FromWithParameters<[PlayerResult; N]> for [ScaledPlayerResult; N] {
-    fn from_with_parameters(result: [PlayerResult; N], parameters: Parameters) -> Self {
-        result.map(|r| r.into_with_parameters(parameters))
+    fn from_with_parameters(results: [PlayerResult; N], parameters: Parameters) -> Self {
+        results.map(|r| r.into_with_parameters(parameters))
+    }
+}
+
+impl FromWithParameters<Vec<PlayerResult>> for Vec<ScaledPlayerResult> {
+    fn from_with_parameters(results: Vec<PlayerResult>, parameters: Parameters) -> Self {
+        results
+            .into_iter()
+            .map(|r| r.into_with_parameters(parameters))
+            .collect()
     }
 }
 
@@ -114,69 +132,6 @@ impl MatchResult {
             MatchResult::Draw => MatchResult::Draw,
             MatchResult::Loss => MatchResult::Win,
         }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct RatingResult<S> {
-    player_1_idx: usize,
-    player_2_idx: usize,
-    score: S,
-}
-
-impl<S> RatingResult<S> {
-    #[must_use]
-    pub fn new(player_1_idx: usize, player_2_idx: usize, score: S) -> Self {
-        RatingResult {
-            player_1_idx,
-            player_2_idx,
-            score,
-        }
-    }
-
-    #[must_use]
-    pub fn player_1_idx(&self) -> usize {
-        self.player_1_idx
-    }
-
-    #[must_use]
-    pub fn player_2_idx(&self) -> usize {
-        self.player_2_idx
-    }
-
-    #[must_use]
-    pub fn score(&self) -> &S {
-        &self.score
-    }
-
-    #[must_use]
-    pub fn opponent_idx(&self, player_idx: usize) -> Option<usize> {
-        if self.player_1_idx == player_idx {
-            Some(self.player_2_idx)
-        } else if self.player_2_idx == player_idx {
-            Some(self.player_1_idx)
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn player_score(&self, player_idx: usize) -> Option<f64>
-    where
-        S: Score,
-    {
-        if self.player_1_idx == player_idx {
-            Some(self.score.player_score())
-        } else if self.player_2_idx == player_idx {
-            Some(self.score.opponent_score())
-        } else {
-            None
-        }
-    }
-
-    #[must_use]
-    pub fn includes(&self, player_idx: usize) -> bool {
-        self.player_1_idx == player_idx || self.player_2_idx == player_idx
     }
 }
 
@@ -548,9 +503,9 @@ mod test {
 
         // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
         // Constructor asserts it to be > 0.0
-        let opponent_a = Rating::new(1400.0, 30.0, parameters.start_volatility());
-        let opponent_b = Rating::new(1550.0, 100.0, parameters.start_volatility());
-        let opponent_c = Rating::new(1700.0, 300.0, parameters.start_volatility());
+        let opponent_a = Rating::new(1400.0, 30.0, parameters.start_rating().volatility());
+        let opponent_b = Rating::new(1550.0, 100.0, parameters.start_rating().volatility());
+        let opponent_c = Rating::new(1700.0, 300.0, parameters.start_rating().volatility());
 
         let results = [
             PlayerResult {
