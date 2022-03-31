@@ -411,7 +411,7 @@ mod test {
         let start_instant = Instant::now();
 
         let mut engine =
-            RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
+            RatingEngine::start_new_at(Duration::from_secs(60 * 60), start_instant, parameters);
 
         let player = engine.register_player(Rating::default_from_parameters(parameters));
 
