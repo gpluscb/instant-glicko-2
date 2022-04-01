@@ -8,7 +8,7 @@ use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRa
 
 /// An opaque index pointing to a player.
 /// This is handed out by [`RatingEngine`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PlayerHandle(usize);
 
 /// A player as managed by [`RatingEngine`].
