@@ -80,9 +80,9 @@
 //! // Type signatures are needed because we could also work with the internal ScaledRating
 //! // That skips one step of calculation,
 //! // but the rating values are not as pretty and not comparable to the original Glicko ratings
-//! let player_1_rating_new: Rating = engine.player_rating(player_1);
+//! let player_1_rating_new: Rating = engine.player_rating(player_1).0;
 //! println!("Player 1 old rating: {player_1_rating_old:?}, new rating: {player_1_rating_new:?}");
-//! let player_2_rating_new: Rating = engine.player_rating(player_2);
+//! let player_2_rating_new: Rating = engine.player_rating(player_2).0;
 //! println!("Player 2 old rating: {player_2_rating_old:?}, new rating: {player_2_rating_new:?}");
 //!
 //! // Loser's rating goes down, winner's rating goes up

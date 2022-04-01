@@ -265,9 +265,9 @@ impl<S> RatingResult<S> {
 /// // Type signatures are needed because we could also work with the internal ScaledRating
 /// // That skips one step of calculation,
 /// // but the rating values are not as pretty and not comparable to the original Glicko ratings
-/// let player_1_rating_new: Rating = engine.player_rating(player_1);
+/// let player_1_rating_new: Rating = engine.player_rating(player_1).0;
 /// println!("Player 1 old rating: {player_1_rating_old:?}, new rating: {player_1_rating_new:?}");
-/// let player_2_rating_new: Rating = engine.player_rating(player_2);
+/// let player_2_rating_new: Rating = engine.player_rating(player_2).0;
 /// println!("Player 2 old rating: {player_2_rating_old:?}, new rating: {player_2_rating_new:?}");
 ///
 /// // Loser's rating goes down, winner's rating goes up
@@ -368,15 +368,19 @@ impl RatingEngine {
     ///
     /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
     ///
+    /// # Returns
+    ///
+    /// Returns the number of rating periods that were closed for this operation.
+    ///
     /// # Panics
     ///
     /// This function might panic if the `result`'s players do not come from this `RatingEngine`.
-    pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) {
+    pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) -> u32 {
         let player_1_idx = result.player_1().0;
         let player_2_idx = result.player_2().0;
 
         // We have to maybe close so the results will be added in the right rating period.
-        self.maybe_close_rating_periods();
+        let (_, closed_periods) = self.maybe_close_rating_periods();
 
         // Split the result into two ScaledPlayerResults and save that on the players
         let player_1_rating = self
@@ -410,6 +414,8 @@ impl RatingEngine {
                 player_1_rating,
                 result.score().opponent_score(),
             ));
+
+        closed_periods
     }
 
     /// Calculates a player's rating at this point in time.
@@ -419,11 +425,15 @@ impl RatingEngine {
     ///
     /// This function takes `self` mutably because it can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
     ///
+    /// # Returns
+    ///
+    /// A tuple containing the player's current rating and the number of rating periods that were closed for this operation.
+    ///
     /// # Panics
     ///
     /// This function might panic or return a meaningless result if `player` wasn't sourced from this [`RatingEngine`].
     #[must_use]
-    pub fn player_rating<R>(&mut self, player: PlayerHandle) -> R
+    pub fn player_rating<R>(&mut self, player: PlayerHandle) -> (R, u32)
     where
         R: FromWithParameters<ScaledRating>,
     {
@@ -439,15 +449,19 @@ impl RatingEngine {
     ///
     /// This function takes `self` mutably because it can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
     ///
+    /// # Returns
+    ///
+    /// A tuple containing the player's current rating and the number of rating periods that were closed for this operation.
+    ///
     /// # Panics
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
     #[must_use]
-    pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: Instant) -> R
+    pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: Instant) -> (R, u32)
     where
         R: FromWithParameters<ScaledRating>,
     {
-        let (elapsed_periods, _) = self.maybe_close_rating_periods_at(time);
+        let (elapsed_periods, closed_periods) = self.maybe_close_rating_periods_at(time);
 
         let player = self
             .managed_players
@@ -455,13 +469,15 @@ impl RatingEngine {
             .get(player.0)
             .expect("Player index didn't belong to this RatingEngine");
 
-        algorithm::rate_player_scaled(
+        let rating = algorithm::rate_player_scaled(
             player.rating,
             &player.current_rating_period_results,
             elapsed_periods,
             self.parameters,
         )
-        .into_with_parameters(self.parameters)
+        .into_with_parameters(self.parameters);
+
+        (rating, closed_periods)
     }
 
     /// Closes all open rating periods that have elapsed by now.
@@ -486,6 +502,12 @@ impl RatingEngine {
     /// at the end of the period are stored as their ratings at the beginning of the next one.
     ///
     /// This function is meant mostly for testability.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing the elapsed periods in the current rating period *after* all previous periods have been closed as a fraction
+    /// as well as the amount of rating periods that have been closed.
+    /// The elapsed periods will always be smaller than 1.
     ///
     /// # Panics
     ///
@@ -593,7 +615,7 @@ mod test {
 
         let rating_period_end_time = start_instant + Duration::from_secs(1);
 
-        let new_rating: Rating = engine.player_rating_at(player, rating_period_end_time);
+        let new_rating: Rating = engine.player_rating_at(player, rating_period_end_time).0;
 
         assert_approx_eq!(new_rating.rating(), 1464.06, 0.01);
         assert_approx_eq!(new_rating.deviation(), 151.52, 0.01);
@@ -621,16 +643,18 @@ mod test {
         engine.register_result(&RatingResult::new(player, opponent, MatchResult::Win));
 
         assert_approx_eq!(engine.elapsed_periods_at(start_instant), 0.0, f64::EPSILON);
-        let (elapsed_period, closed_periods) = engine.maybe_close_rating_periods_at(start_instant);
-        assert_approx_eq!(elapsed_period, 0.0, f64::EPSILON);
+        let (elapsed_periods, closed_periods) = engine.maybe_close_rating_periods_at(start_instant);
+        assert_approx_eq!(elapsed_periods, 0.0, f64::EPSILON);
         assert_eq!(closed_periods, 0);
 
         // Test that rating doesn't radically change across rating periods
         let right_before = start_instant + (Duration::from_secs(1) - Duration::from_nanos(1));
-        let rating_right_before: Rating = engine.player_rating_at(player, right_before);
+        let (rating_right_before, closed_periods) = engine.player_rating_at::<Rating>(player, right_before);
+        assert_eq!(closed_periods, 0);
 
         let right_after = start_instant + (Duration::from_secs(1) + Duration::from_nanos(1));
-        let rating_right_after: Rating = engine.player_rating_at(player, right_after);
+        let (rating_right_after, closed_periods) = engine.player_rating_at::<Rating>(player, right_after);
+        assert_eq!(closed_periods, 1);
 
         assert_approx_eq!(
             rating_right_before.rating(),
@@ -664,11 +688,11 @@ mod test {
 
         let player = engine.register_player(parameters.start_rating());
 
-        let rating_at_start: Rating = engine.player_rating_at(player, start_instant);
+        let rating_at_start: Rating = engine.player_rating_at(player, start_instant).0;
         let rating_after_year: Rating = engine.player_rating_at(
             player,
             start_instant + Duration::from_secs(60 * 60 * 24 * 365),
-        );
+        ).0;
 
         // Deviation grows over time, rest should stay the same
         assert_approx_eq!(
