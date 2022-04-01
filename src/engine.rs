@@ -138,6 +138,7 @@ pub struct RatingResult<S> {
 
 impl<S> RatingResult<S> {
     /// Creates a new [`RatingResult`] between the given players and with the given score.
+    ///
     /// See also: [`Score`]
     ///
     /// # Example
@@ -307,7 +308,7 @@ impl RatingEngine {
         start_time: Instant,
         parameters: Parameters,
     ) -> Self {
-        assert!(start_time < Instant::now(), "Start time was in the past");
+        assert!(start_time <= Instant::now(), "Start time was in the past");
 
         RatingEngine {
             rating_period_duration,
