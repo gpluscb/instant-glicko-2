@@ -467,7 +467,7 @@ impl RatingEngine {
             .managed_players
             .vec()
             .get(player.0)
-            .expect("Player index didn't belong to this RatingEngine");
+            .expect("Player didn't belong to this RatingEngine");
 
         let rating = algorithm::rate_player_scaled(
             player.rating,
@@ -649,11 +649,13 @@ mod test {
 
         // Test that rating doesn't radically change across rating periods
         let right_before = start_instant + (Duration::from_secs(1) - Duration::from_nanos(1));
-        let (rating_right_before, closed_periods) = engine.player_rating_at::<Rating>(player, right_before);
+        let (rating_right_before, closed_periods) =
+            engine.player_rating_at::<Rating>(player, right_before);
         assert_eq!(closed_periods, 0);
 
         let right_after = start_instant + (Duration::from_secs(1) + Duration::from_nanos(1));
-        let (rating_right_after, closed_periods) = engine.player_rating_at::<Rating>(player, right_after);
+        let (rating_right_after, closed_periods) =
+            engine.player_rating_at::<Rating>(player, right_after);
         assert_eq!(closed_periods, 1);
 
         assert_approx_eq!(
@@ -689,10 +691,12 @@ mod test {
         let player = engine.register_player(parameters.start_rating());
 
         let rating_at_start: Rating = engine.player_rating_at(player, start_instant).0;
-        let rating_after_year: Rating = engine.player_rating_at(
-            player,
-            start_instant + Duration::from_secs(60 * 60 * 24 * 365),
-        ).0;
+        let rating_after_year: Rating = engine
+            .player_rating_at(
+                player,
+                start_instant + Duration::from_secs(60 * 60 * 24 * 365),
+            )
+            .0;
 
         // Deviation grows over time, rest should stay the same
         assert_approx_eq!(
