@@ -337,7 +337,7 @@ impl RatingEngine {
     }
 
     /// Returns an [`Iterator`] over all registered players.
-    pub fn players(&self) -> impl Iterator<Item = PlayerHandle> {
+    pub fn player_handles(&self) -> impl Iterator<Item = PlayerHandle> {
         (0..self.managed_players.vec().len()).map(PlayerHandle)
     }
 
