@@ -64,10 +64,10 @@
 //! // Register two players
 //! // The first player is relatively strong
 //! let player_1_rating_old = Rating::new(1700.0, 300.0, 0.06);
-//! let player_1 = engine.register_player(player_1_rating_old);
+//! let player_1 = engine.register_player(player_1_rating_old).0;
 //! // The second player hasn't played any games
 //! let player_2_rating_old = parameters.start_rating();
-//! let player_2 = engine.register_player(player_2_rating_old);
+//! let player_2 = engine.register_player(player_2_rating_old).0;
 //!
 //! // They play and player_2 wins
 //! engine.register_result(&RatingResult::new(

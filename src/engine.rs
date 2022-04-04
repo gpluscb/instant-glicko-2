@@ -156,8 +156,8 @@ impl<S> RatingResult<S> {
     ///     Parameters::default(),
     /// );
     ///
-    /// let player_1 = engine.register_player(parameters.start_rating());
-    /// let player_2 = engine.register_player(parameters.start_rating());
+    /// let player_1 = engine.register_player(parameters.start_rating()).0;
+    /// let player_2 = engine.register_player(parameters.start_rating()).0;
     ///
     /// // `player_1` wins against `player_2`.
     /// let result = RatingResult::new(player_1, player_2, MatchResult::Win);
@@ -249,10 +249,10 @@ impl<S> RatingResult<S> {
 /// // Register two players
 /// // The first player is relatively strong
 /// let player_1_rating_old = Rating::new(1700.0, 300.0, 0.06);
-/// let player_1 = engine.register_player(player_1_rating_old);
+/// let player_1 = engine.register_player(player_1_rating_old).0;
 /// // The second player hasn't played any games
 /// let player_2_rating_old = parameters.start_rating();
-/// let player_2 = engine.register_player(player_2_rating_old);
+/// let player_2 = engine.register_player(player_2_rating_old).0;
 ///
 /// // They play and player_2 wins
 /// engine.register_result(&RatingResult::new(
@@ -360,16 +360,42 @@ impl RatingEngine {
         (0..self.managed_players.vec().len()).map(PlayerHandle)
     }
 
-    /// Registers a new player with a given rating to this engine.
+    /// Registers a new player with a given rating to this engine at the start of the current rating period.
+    ///
+    /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
     ///
     /// # Returns
     ///
-    /// Returns a value that can be later used to identify this player with this engine
-    /// to get their ratings.
-    pub fn register_player<R>(&mut self, rating: R) -> PlayerHandle
+    /// A tuple containing a value that can be later used to identify this player with this engine
+    /// and the number of rating periods that were closed for this operation.
+    // TODO: a way to register Right Now (so that the deviation is exactly the same at the now timestamp)
+    pub fn register_player<R>(&mut self, rating: R) -> (PlayerHandle, u32)
     where
         R: IntoWithParameters<ScaledRating>,
     {
+        self.register_player_at(rating, Instant::now())
+    }
+
+    /// Registers a new player with a given rating to this engine at the start of what is the current rating period at the given time.
+    ///
+    /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
+    ///
+    /// This function is meant mostly for testability.
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing a value that can be later used to identify this player with this engine
+    /// and the number of rating periods that were closed for this operation.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `time` is earlier than the start of the last rating period.
+    pub fn register_player_at<R>(&mut self, rating: R, time: Instant) -> (PlayerHandle, u32)
+    where
+        R: IntoWithParameters<ScaledRating>,
+    {
+        let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
+
         let rating = rating.into_with_parameters(self.parameters);
 
         let index = self.managed_players.vec().len();
@@ -379,7 +405,7 @@ impl RatingEngine {
             current_rating_period_results: Vec::new(),
         });
 
-        PlayerHandle(index)
+        (PlayerHandle(index), closed_periods)
     }
 
     /// Registers a result in the current rating period.
@@ -459,7 +485,7 @@ impl RatingEngine {
 
     /// Calculates a player's rating at this point in time.
     /// The calculation is based on the registered results for this player (see [`register_result`][Self::register_result]).
-    /// Note that this function is not cheap.
+    /// Note that this function does the actual rating computation.
     /// The rating deviation of this result also depends on the current time, because rating deviation increases with time.
     ///
     /// This function takes `self` mutably because it can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
@@ -481,7 +507,7 @@ impl RatingEngine {
 
     /// Calculates a player's rating at a given point in time.
     /// The calculation is based on the registered results for this player (see [`register_result`][Self::register_result]).
-    /// Note that this function is not cheap.
+    /// Note that this function does the actual rating computation.
     /// The rating deviation of this result also depends on the current time, because rating deviation increases with time.
     ///
     /// This function is meant mostly for testability.
@@ -630,27 +656,41 @@ mod test {
         let mut engine =
             RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
 
-        let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
+        let player = engine
+            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_instant)
+            .0;
 
-        let opponent_a = engine.register_player(Rating::new(
-            1400.0,
-            30.0,
-            parameters.start_rating().volatility(),
-        ));
-        let opponent_b = engine.register_player(Rating::new(
-            1550.0,
-            100.0,
-            parameters.start_rating().volatility(),
-        ));
-        let opponent_c = engine.register_player(Rating::new(
-            1700.0,
-            300.0,
-            parameters.start_rating().volatility(),
-        ));
+        let opponent_a = engine
+            .register_player_at(
+                Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+                start_instant,
+            )
+            .0;
+        let opponent_b = engine
+            .register_player_at(
+                Rating::new(1550.0, 100.0, parameters.start_rating().volatility()),
+                start_instant,
+            )
+            .0;
+        let opponent_c = engine
+            .register_player_at(
+                Rating::new(1700.0, 300.0, parameters.start_rating().volatility()),
+                start_instant,
+            )
+            .0;
 
-        engine.register_result(&RatingResult::new(player, opponent_a, MatchResult::Win));
-        engine.register_result(&RatingResult::new(player, opponent_b, MatchResult::Loss));
-        engine.register_result(&RatingResult::new(player, opponent_c, MatchResult::Loss));
+        engine.register_result_at(
+            &RatingResult::new(player, opponent_a, MatchResult::Win),
+            start_instant,
+        );
+        engine.register_result_at(
+            &RatingResult::new(player, opponent_b, MatchResult::Loss),
+            start_instant,
+        );
+        engine.register_result_at(
+            &RatingResult::new(player, opponent_c, MatchResult::Loss),
+            start_instant,
+        );
 
         let rating_period_end_time = start_instant + Duration::from_secs(1);
 
@@ -671,13 +711,16 @@ mod test {
         let mut engine =
             RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
 
-        let player = engine.register_player(Rating::new(1500.0, 200.0, 0.06));
+        let player = engine
+            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_instant)
+            .0;
 
-        let opponent = engine.register_player(Rating::new(
-            1400.0,
-            30.0,
-            parameters.start_rating().volatility(),
-        ));
+        let opponent = engine
+            .register_player_at(
+                Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+                start_instant,
+            )
+            .0;
 
         engine.register_result(&RatingResult::new(player, opponent, MatchResult::Win));
 
@@ -727,7 +770,9 @@ mod test {
         let mut engine =
             RatingEngine::start_new_at(Duration::from_secs(60 * 60), start_instant, parameters);
 
-        let player = engine.register_player(parameters.start_rating());
+        let player = engine
+            .register_player_at(parameters.start_rating(), start_instant)
+            .0;
 
         let rating_at_start: Rating = engine.player_rating_at(player, start_instant).0;
         let rating_after_year: Rating = engine
