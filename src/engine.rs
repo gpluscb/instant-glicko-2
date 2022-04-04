@@ -560,8 +560,8 @@ impl RatingEngine {
 
         // Every result is in the first rating period that needs to be closed.
         // This is guaranteed because we call this method before every time a new result gets added.
-        for player in self.managed_players.iter_mut() {
-            for _ in 0..periods_to_close {
+        for _ in 0..periods_to_close {
+            for player in self.managed_players.iter_mut() {
                 algorithm::close_player_rating_period_scaled(
                     &mut player.rating,
                     &player.current_rating_period_results,
