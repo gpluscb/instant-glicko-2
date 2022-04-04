@@ -336,6 +336,25 @@ impl RatingEngine {
         self.parameters
     }
 
+    /// The rating of a player at the **start of** the last opened rating period.
+    /// This can, for example, be used to construct
+    ///
+    /// # Panics
+    ///
+    /// This function might panic or behave undesirably if `player` doesn't belong to this [`RatingEngine`].
+    #[must_use]
+    pub fn last_rating_period_rating<R>(&self, player: PlayerHandle) -> R
+    where
+        R: FromWithParameters<ScaledRating>,
+    {
+        self.managed_players
+            .vec()
+            .get(player.0)
+            .expect("Player didn't belong to this RatingEngine")
+            .rating()
+            .into_with_parameters(self.parameters)
+    }
+
     /// Returns an [`Iterator`] over all registered players.
     pub fn player_handles(&self) -> impl Iterator<Item = PlayerHandle> {
         (0..self.managed_players.vec().len()).map(PlayerHandle)
