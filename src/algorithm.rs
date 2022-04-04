@@ -428,8 +428,8 @@ fn calculate_new_volatility(
     let mut f_b = f(b);
 
     // 4.
-    for iteration in (0..).take_while(move |_| f64::abs(b - a) > parameters.convergence_tolerance())
-    {
+    let mut iteration = 0;
+    while f64::abs(b - a) > parameters.convergence_tolerance() {
         assert!(
             iteration <= constants::MAX_ITERATIONS,
             "Maximum number of iterations ({}) in converging loop algorithm exceeded. Is the convergence tolerance ({}) unreasonably low?",
@@ -452,6 +452,7 @@ fn calculate_new_volatility(
         b = c;
         f_b = f_c;
 
+        iteration += 1;
         // (d) checked by loop
     }
 
