@@ -389,17 +389,37 @@ impl RatingEngine {
     ///
     /// # Returns
     ///
-    /// Returns the number of rating periods that were closed for this operation.
+    /// The number of rating periods that were closed for this operation.
     ///
     /// # Panics
     ///
-    /// This function might panic if the `result`'s players do not come from this `RatingEngine`.
+    /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
     pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) -> u32 {
+        self.register_result_at(result, Instant::now())
+    }
+
+    /// Registers a result at the given time in the current rating period.
+    /// Calculating the resulting ratings happens only when the Rating is inspected.
+    ///
+    /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
+    ///
+    /// This function is meant mostly for testability.
+    ///
+    /// # Returns
+    ///
+    /// The number of rating periods that were closed for this operation.
+    ///
+    /// # Panics
+    ///
+    /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
+    ///
+    /// This function panics if `time` is earlier than the start of the last rating period.
+    pub fn register_result_at<S: Score>(&mut self, result: &RatingResult<S>, time: Instant) -> u32 {
         let player_1_idx = result.player_1().0;
         let player_2_idx = result.player_2().0;
 
         // We have to maybe close so the results will be added in the right rating period.
-        let (_, closed_periods) = self.maybe_close_rating_periods();
+        let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
 
         // Split the result into two ScaledPlayerResults and save that on the players
         let player_1_rating = self
