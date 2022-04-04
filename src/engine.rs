@@ -368,6 +368,8 @@ impl RatingEngine {
     ///
     /// A tuple containing a value that can be later used to identify this player with this engine
     /// and the number of rating periods that were closed for this operation.
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     // TODO: a way to register Right Now (so that the deviation is exactly the same at the now timestamp)
     pub fn register_player<R>(&mut self, rating: R) -> (PlayerHandle, u32)
     where
@@ -390,6 +392,8 @@ impl RatingEngine {
     /// # Panics
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn register_player_at<R>(&mut self, rating: R, time: Instant) -> (PlayerHandle, u32)
     where
         R: IntoWithParameters<ScaledRating>,
@@ -420,6 +424,8 @@ impl RatingEngine {
     /// # Panics
     ///
     /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) -> u32 {
         self.register_result_at(result, Instant::now())
     }
@@ -440,6 +446,8 @@ impl RatingEngine {
     /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn register_result_at<S: Score>(&mut self, result: &RatingResult<S>, time: Instant) -> u32 {
         let player_1_idx = result.player_1().0;
         let player_2_idx = result.player_2().0;
@@ -497,6 +505,8 @@ impl RatingEngine {
     /// # Panics
     ///
     /// This function might panic or return a meaningless result if `player` wasn't sourced from this [`RatingEngine`].
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     #[must_use]
     pub fn player_rating<R>(&mut self, player: PlayerHandle) -> (R, u32)
     where
@@ -521,6 +531,8 @@ impl RatingEngine {
     /// # Panics
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     #[must_use]
     pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: Instant) -> (R, u32)
     where
@@ -556,6 +568,10 @@ impl RatingEngine {
     /// A tuple containing the elapsed periods in the current rating period *after* all previous periods have been closed as a fraction
     /// as well as the amount of rating periods that have been closed.
     /// The elapsed periods will always be smaller than 1.
+    ///
+    /// # Panics
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn maybe_close_rating_periods(&mut self) -> (f64, u32) {
         self.maybe_close_rating_periods_at(Instant::now())
     }
@@ -577,6 +593,8 @@ impl RatingEngine {
     /// # Panics
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
+    ///
+    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn maybe_close_rating_periods_at(&mut self, time: Instant) -> (f64, u32) {
         let elapsed_periods = self.elapsed_periods_at(time);
 

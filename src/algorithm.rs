@@ -3,7 +3,7 @@
 use std::borrow::Borrow;
 use std::f64::consts::PI;
 
-use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
+use crate::{constants, FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
 /// A match result as it pertains to a specific player.
 ///
@@ -137,6 +137,10 @@ impl ScaledPlayerResult {
 /// this function avoids you having to manually specify generic type parameters.
 ///
 /// See [`generic_close_player_rating_period`] for more documentation.
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 pub fn close_player_rating_period(
     player_rating: &mut Rating,
     results: &[PlayerResult],
@@ -150,6 +154,10 @@ pub fn close_player_rating_period(
 /// this function avoids you having to manually specify generic type parameters.
 ///
 /// See [`generic_close_player_rating_period`] for more documentation.
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 pub fn close_player_rating_period_scaled(
     player_rating: &mut ScaledRating,
     results: &[ScaledPlayerResult],
@@ -167,6 +175,10 @@ pub fn close_player_rating_period_scaled(
 /// * `player_rating` - The rating of the player **at the onset of the rating period**
 /// * `results` - The results of the player that occurred in the current rating period
 /// * `parameters`
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 pub fn generic_close_player_rating_period<Rating, Results, ResultsSlice>(
     player_rating: &mut Rating,
     results: Results,
@@ -184,6 +196,10 @@ pub fn generic_close_player_rating_period<Rating, Results, ResultsSlice>(
 /// this function avoids you having to manually specify generic type parameters.
 ///
 /// See [`generic_rate_player`] for more documentation.
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_player(
     player_rating: Rating,
@@ -199,6 +215,10 @@ pub fn rate_player(
 /// this function avoids you having to manually specify generic type parameters.
 ///
 /// See [`generic_rate_player`] for more documentation.
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_player_scaled(
     player_rating: ScaledRating,
@@ -219,6 +239,10 @@ pub fn rate_player_scaled(
 /// * `results` - All results of the player collected in the rating period at the current time
 /// * `elapsed_periods` - What fraction of a rating period has elapsed while the `results` were collected
 /// * `parameters`
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn generic_rate_player<Rating, Return, Results, ScaledResults>(
     player_rating: Rating,
@@ -338,6 +362,10 @@ fn calculate_e(g: f64, player_rating: f64, opponent_rating: f64) -> f64 {
 }
 
 /// Step 5.
+///
+/// # Panics
+///
+/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 fn calculate_new_volatility(
     estimated_improvement: f64,
@@ -400,8 +428,14 @@ fn calculate_new_volatility(
     let mut f_b = f(b);
 
     // 4.
-    // TODO: iterations cap -> panic or something?
-    while f64::abs(b - a) > parameters.convergence_tolerance() {
+    for iteration in (0..).take_while(move |_| f64::abs(b - a) > parameters.convergence_tolerance())
+    {
+        assert!(
+            iteration <= constants::MAX_ITERATIONS,
+            "Maximum number of iterations ({}) in converging loop algorithm exceeded. Is the convergence tolerance ({}) unreasonably low?",
+            constants::MAX_ITERATIONS, parameters.convergence_tolerance()
+        );
+
         // (a)
         let c = a + (a - b) * f_a / (f_b - f_a);
         let f_c = f(c);
