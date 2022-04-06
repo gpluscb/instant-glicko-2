@@ -241,7 +241,6 @@ impl RatingEngine {
     }
 
     /// The rating of a player at the **start of** the last opened rating period.
-    /// This can, for example, be used to construct
     ///
     /// # Panics
     ///
