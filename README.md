@@ -61,7 +61,7 @@ Different example using `RatingEngine`:
 use std::time::Duration;
 
 use instant_glicko_2::{Parameters, Rating};
-use instant_glicko_2::engine::{MatchResult, RatingEngine, RatingResult};
+use instant_glicko_2::engine::{MatchResult, RatingEngine};
 
 let parameters = Parameters::default();
 
@@ -81,11 +81,11 @@ let player_2_rating_old = parameters.start_rating();
 let player_2 = engine.register_player(player_2_rating_old).0;
 
 // They play and player_2 wins
-engine.register_result(&RatingResult::new(
+engine.register_result(
     player_1,
     player_2,
-    MatchResult::Loss,
-));
+    &MatchResult::Loss,
+);
 
 // Print the new ratings
 // Type signatures are needed because we could also work with the internal ScaledRating

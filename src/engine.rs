@@ -128,102 +128,6 @@ impl MatchResult {
     }
 }
 
-/// A result of a match between two players managed by the same [`RatingEngine`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct RatingResult<S> {
-    player_1: PlayerHandle,
-    player_2: PlayerHandle,
-    score: S,
-}
-
-impl<S> RatingResult<S> {
-    /// Creates a new [`RatingResult`] between the given players and with the given score.
-    ///
-    /// See also: [`Score`]
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::time::Duration;
-    ///
-    /// use instant_glicko_2::{Parameters, Rating};
-    /// use instant_glicko_2::engine::{MatchResult, RatingEngine, RatingResult};
-    ///
-    /// let parameters = Parameters::default();
-    ///
-    /// let mut engine = RatingEngine::start_new(
-    ///     Duration::from_secs(60 * 60 * 24),
-    ///     Parameters::default(),
-    /// );
-    ///
-    /// let player_1 = engine.register_player(parameters.start_rating()).0;
-    /// let player_2 = engine.register_player(parameters.start_rating()).0;
-    ///
-    /// // `player_1` wins against `player_2`.
-    /// let result = RatingResult::new(player_1, player_2, MatchResult::Win);
-    /// engine.register_result(&result);
-    /// ```
-    #[must_use]
-    pub fn new(player_1: PlayerHandle, player_2: PlayerHandle, score: S) -> Self {
-        RatingResult {
-            player_1,
-            player_2,
-            score,
-        }
-    }
-
-    /// The first match participant.
-    #[must_use]
-    pub fn player_1(&self) -> PlayerHandle {
-        self.player_1
-    }
-
-    /// The second match participant.
-    #[must_use]
-    pub fn player_2(&self) -> PlayerHandle {
-        self.player_2
-    }
-
-    /// The match score.
-    #[must_use]
-    pub fn score(&self) -> &S {
-        &self.score
-    }
-
-    /// The opponent of `player`, or [`None`] if `player` didn't participate in this match.
-    #[must_use]
-    pub fn opponent(&self, player: PlayerHandle) -> Option<PlayerHandle> {
-        if self.player_1 == player {
-            Some(self.player_2)
-        } else if self.player_2 == player {
-            Some(self.player_1)
-        } else {
-            None
-        }
-    }
-
-    /// The score of `player`, or [`None`] if `player` didn't participate in this match.
-    #[must_use]
-    pub fn player_score(&self, player: PlayerHandle) -> Option<f64>
-    where
-        S: Score,
-    {
-        if self.player_1 == player {
-            Some(self.score.player_score())
-        } else if self.player_2 == player {
-            Some(self.score.opponent_score())
-        } else {
-            None
-        }
-    }
-
-    /// `true` if and only if `player` participated in this match.
-    #[must_use]
-    pub fn includes(&self, player: PlayerHandle) -> bool {
-        self.player_1 == player || self.player_2 == player
-    }
-}
-
 /// Struct for managing player ratings and calculating them based on match results.
 ///
 /// It uses the Glicko-2 algorithm with a given rating period duration and given parameters.
@@ -235,7 +139,7 @@ impl<S> RatingResult<S> {
 /// use std::time::Duration;
 ///
 /// use instant_glicko_2::{Parameters, Rating};
-/// use instant_glicko_2::engine::{MatchResult, RatingEngine, RatingResult};
+/// use instant_glicko_2::engine::{MatchResult, RatingEngine};
 ///
 /// let parameters = Parameters::default();
 ///
@@ -255,11 +159,11 @@ impl<S> RatingResult<S> {
 /// let player_2 = engine.register_player(player_2_rating_old).0;
 ///
 /// // They play and player_2 wins
-/// engine.register_result(&RatingResult::new(
+/// engine.register_result(
 ///     player_1,
 ///     player_2,
-///     MatchResult::Loss,
-/// ));
+///     &MatchResult::Loss,
+/// );
 ///
 /// // Print the new ratings
 /// // Type signatures are needed because we could also work with the internal ScaledRating
@@ -426,8 +330,13 @@ impl RatingEngine {
     /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
     ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
-    pub fn register_result<S: Score>(&mut self, result: &RatingResult<S>) -> u32 {
-        self.register_result_at(result, Instant::now())
+    pub fn register_result<S: Score>(
+        &mut self,
+        player_1: PlayerHandle,
+        player_2: PlayerHandle,
+        score: &S,
+    ) -> u32 {
+        self.register_result_at(player_1, player_2, score, Instant::now())
     }
 
     /// Registers a result at the given time in the current rating period.
@@ -448,10 +357,13 @@ impl RatingEngine {
     /// This function panics if `time` is earlier than the start of the last rating period.
     ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
-    pub fn register_result_at<S: Score>(&mut self, result: &RatingResult<S>, time: Instant) -> u32 {
-        let player_1_idx = result.player_1().0;
-        let player_2_idx = result.player_2().0;
-
+    pub fn register_result_at<S: Score>(
+        &mut self,
+        player_1: PlayerHandle,
+        player_2: PlayerHandle,
+        score: &S,
+        time: Instant,
+    ) -> u32 {
         // We have to maybe close so the results will be added in the right rating period.
         let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
 
@@ -459,33 +371,33 @@ impl RatingEngine {
         let player_1_rating = self
             .managed_players
             .vec()
-            .get(player_1_idx)
+            .get(player_1.0)
             .expect("Result didn't belong to this RatingEngine")
             .rating;
 
         let player_2_rating = self
             .managed_players
             .vec()
-            .get(player_2_idx)
+            .get(player_2.0)
             .expect("Result didn't belong to this RatingEngine")
             .rating;
 
         self.managed_players
-            .get_mut(player_1_idx)
+            .get_mut(player_1.0)
             .unwrap()
             .current_rating_period_results
             .push(ScaledPlayerResult::new(
                 player_2_rating,
-                result.score().player_score(),
+                score.player_score(),
             ));
 
         self.managed_players
-            .get_mut(player_2_idx)
+            .get_mut(player_2.0)
             .unwrap()
             .current_rating_period_results
             .push(ScaledPlayerResult::new(
                 player_1_rating,
-                result.score().opponent_score(),
+                score.opponent_score(),
             ));
 
         closed_periods
@@ -647,7 +559,7 @@ impl RatingEngine {
 mod test {
     use std::time::{Duration, Instant};
 
-    use super::{MatchResult, RatingEngine, RatingResult};
+    use super::{MatchResult, RatingEngine};
     use crate::{Parameters, Rating};
 
     macro_rules! assert_approx_eq {
@@ -697,18 +609,9 @@ mod test {
             )
             .0;
 
-        engine.register_result_at(
-            &RatingResult::new(player, opponent_a, MatchResult::Win),
-            start_instant,
-        );
-        engine.register_result_at(
-            &RatingResult::new(player, opponent_b, MatchResult::Loss),
-            start_instant,
-        );
-        engine.register_result_at(
-            &RatingResult::new(player, opponent_c, MatchResult::Loss),
-            start_instant,
-        );
+        engine.register_result_at(player, opponent_a, &MatchResult::Win, start_instant);
+        engine.register_result_at(player, opponent_b, &MatchResult::Loss, start_instant);
+        engine.register_result_at(player, opponent_c, &MatchResult::Loss, start_instant);
 
         let rating_period_end_time = start_instant + Duration::from_secs(1);
 
@@ -740,7 +643,7 @@ mod test {
             )
             .0;
 
-        engine.register_result(&RatingResult::new(player, opponent, MatchResult::Win));
+        engine.register_result(player, opponent, &MatchResult::Win);
 
         assert_approx_eq!(engine.elapsed_periods_at(start_instant), 0.0, f64::EPSILON);
         let (elapsed_periods, closed_periods) = engine.maybe_close_rating_periods_at(start_instant);
