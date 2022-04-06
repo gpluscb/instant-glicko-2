@@ -1,6 +1,6 @@
 //! This mod defines the [`RatingEngine`] struct which abstracts away the rating period from rating calculations.
 
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime};
 
 use crate::algorithm::{self, PlayerResult, ScaledPlayerResult};
 use crate::util::PushOnlyVec;
@@ -184,7 +184,7 @@ impl MatchResult {
 #[derive(Clone, PartialEq, Debug)]
 pub struct RatingEngine {
     rating_period_duration: Duration,
-    last_rating_period_start: Instant,
+    last_rating_period_start: SystemTime,
     // This should be a PushOnlyVec because we hand out index references.
     managed_players: PushOnlyVec<ScaledPlayer>,
     parameters: Parameters,
@@ -194,12 +194,10 @@ impl RatingEngine {
     /// Creates a new [`RatingEngine`], starting the first rating period immediately.
     #[must_use]
     pub fn start_new(rating_period_duration: Duration, parameters: Parameters) -> Self {
-        Self::start_new_at(rating_period_duration, Instant::now(), parameters)
+        Self::start_new_at(rating_period_duration, SystemTime::now(), parameters)
     }
 
     /// Creates a new [`RatingEngine`], starting the first rating period at the specified point in time.
-    /// `start_time` may be at any point in the past, but not in the future.
-    /// This is a requirement to prevent potential panics in other functions.
     ///
     /// This function is meant mostly for testability.
     ///
@@ -209,11 +207,9 @@ impl RatingEngine {
     #[must_use]
     pub fn start_new_at(
         rating_period_duration: Duration,
-        start_time: Instant,
+        start_time: SystemTime,
         parameters: Parameters,
     ) -> Self {
-        assert!(start_time <= Instant::now(), "Start time was in the past");
-
         RatingEngine {
             rating_period_duration,
             last_rating_period_start: start_time,
@@ -230,7 +226,7 @@ impl RatingEngine {
 
     /// The start of the last opened rating period.
     #[must_use]
-    pub fn last_rating_period_start(&self) -> Instant {
+    pub fn last_rating_period_start(&self) -> SystemTime {
         self.last_rating_period_start
     }
 
@@ -278,12 +274,14 @@ impl RatingEngine {
     where
         R: IntoWithParameters<ScaledRating>,
     {
-        self.register_player_at(rating, Instant::now())
+        self.register_player_at(rating, SystemTime::now())
     }
 
     /// Registers a new player with a given rating to this engine at the start of what is the current rating period at the given time.
+    /// If `time` is earlier than the start of the last rating period, the player will be registered at the start of the last rating period.
     ///
     /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
+    /// If `time` is earlier than the start of the last rating period, no rating periods will be closed.
     ///
     /// This function is meant mostly for testability.
     ///
@@ -297,7 +295,7 @@ impl RatingEngine {
     /// This function panics if `time` is earlier than the start of the last rating period.
     ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
-    pub fn register_player_at<R>(&mut self, rating: R, time: Instant) -> (PlayerHandle, u32)
+    pub fn register_player_at<R>(&mut self, rating: R, time: SystemTime) -> (PlayerHandle, u32)
     where
         R: IntoWithParameters<ScaledRating>,
     {
@@ -335,13 +333,14 @@ impl RatingEngine {
         player_2: PlayerHandle,
         score: &S,
     ) -> u32 {
-        self.register_result_at(player_1, player_2, score, Instant::now())
+        self.register_result_at(player_1, player_2, score, SystemTime::now())
     }
 
     /// Registers a result at the given time in the current rating period.
     /// Calculating the resulting ratings happens only when the Rating is inspected.
     ///
     /// This function can close old rating periods (see [`maybe_close_rating_periods`][Self::maybe_close_rating_periods]).
+    /// If `time` is earlier than the start of the last rating period, no rating periods will be closed.
     ///
     /// This function is meant mostly for testability.
     ///
@@ -353,15 +352,13 @@ impl RatingEngine {
     ///
     /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
     ///
-    /// This function panics if `time` is earlier than the start of the last rating period.
-    ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn register_result_at<S: Score>(
         &mut self,
         player_1: PlayerHandle,
         player_2: PlayerHandle,
         score: &S,
-        time: Instant,
+        time: SystemTime,
     ) -> u32 {
         // We have to maybe close so the results will be added in the right rating period.
         let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
@@ -423,7 +420,7 @@ impl RatingEngine {
     where
         R: FromWithParameters<ScaledRating>,
     {
-        self.player_rating_at(player, Instant::now())
+        self.player_rating_at(player, SystemTime::now())
     }
 
     /// Calculates a player's rating at a given point in time.
@@ -439,13 +436,17 @@ impl RatingEngine {
     ///
     /// A tuple containing the player's current rating and the number of rating periods that were closed for this operation.
     ///
+    /// If `time` is earlier than the start of the last rating period,
+    /// no rating periods will be closed and the function will return the rating at the start of the last rating period
+    /// after applying the rating change from the registered results.
+    ///
     /// # Panics
     ///
-    /// This function panics if `time` is earlier than the start of the last rating period.
+    /// This function might panic or return a meaningless result if `player` wasn't sourced from this [`RatingEngine`].
     ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     #[must_use]
-    pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: Instant) -> (R, u32)
+    pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: SystemTime) -> (R, u32)
     where
         R: FromWithParameters<ScaledRating>,
     {
@@ -484,7 +485,7 @@ impl RatingEngine {
     ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn maybe_close_rating_periods(&mut self) -> (f64, u32) {
-        self.maybe_close_rating_periods_at(Instant::now())
+        self.maybe_close_rating_periods_at(SystemTime::now())
     }
 
     /// Closes all open rating periods that have elapsed by a given point in time.
@@ -501,12 +502,13 @@ impl RatingEngine {
     /// as well as the amount of rating periods that have been closed.
     /// The elapsed periods will always be smaller than 1.
     ///
+    /// If `time` is earlier than the start of the last rating period,
+    /// no rating periods will be closed and the returned value will be `(0.0, 0)`.
+    ///
     /// # Panics
     ///
-    /// This function panics if `time` is earlier than the start of the last rating period.
-    ///
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
-    pub fn maybe_close_rating_periods_at(&mut self, time: Instant) -> (f64, u32) {
+    pub fn maybe_close_rating_periods_at(&mut self, time: SystemTime) -> (f64, u32) {
         let elapsed_periods = self.elapsed_periods_at(time);
 
         // We won't have negative elapsed_periods. Truncation this is the wanted result.
@@ -536,27 +538,27 @@ impl RatingEngine {
     /// The amount of rating periods that have elapsed since the last one was closed as a fraction.
     #[must_use]
     pub fn elapsed_periods(&self) -> f64 {
-        self.elapsed_periods_at(Instant::now())
+        self.elapsed_periods_at(SystemTime::now())
     }
 
     /// The amount of rating periods that have elapsed at the given point in time since the last one was closed as a fraction.
     ///
+    /// If `time` is earlier than the start of the last rating period, this function returns `0.0`.
+    ///
     /// This function is meant mostly for testability.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `time` is earlier than the start of the last rating period.
     #[must_use]
-    pub fn elapsed_periods_at(&self, time: Instant) -> f64 {
-        let elapsed_duration = time.duration_since(self.last_rating_period_start);
-
-        elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
+    pub fn elapsed_periods_at(&self, time: SystemTime) -> f64 {
+        if let Ok(elapsed_duration) = time.duration_since(self.last_rating_period_start) {
+            elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
+        } else {
+            0.0
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::time::{Duration, Instant};
+    use std::time::{Duration, SystemTime};
 
     use super::{MatchResult, RatingEngine};
     use crate::{Parameters, Rating};
@@ -580,39 +582,38 @@ mod test {
     fn test_paper_example() {
         let parameters = Parameters::default().with_volatility_change(0.5);
 
-        let start_instant = Instant::now();
+        let start_time = SystemTime::UNIX_EPOCH;
 
-        let mut engine =
-            RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
+        let mut engine = RatingEngine::start_new_at(Duration::from_secs(1), start_time, parameters);
 
         let player = engine
-            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_instant)
+            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_time)
             .0;
 
         let opponent_a = engine
             .register_player_at(
                 Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
-                start_instant,
+                start_time,
             )
             .0;
         let opponent_b = engine
             .register_player_at(
                 Rating::new(1550.0, 100.0, parameters.start_rating().volatility()),
-                start_instant,
+                start_time,
             )
             .0;
         let opponent_c = engine
             .register_player_at(
                 Rating::new(1700.0, 300.0, parameters.start_rating().volatility()),
-                start_instant,
+                start_time,
             )
             .0;
 
-        engine.register_result_at(player, opponent_a, &MatchResult::Win, start_instant);
-        engine.register_result_at(player, opponent_b, &MatchResult::Loss, start_instant);
-        engine.register_result_at(player, opponent_c, &MatchResult::Loss, start_instant);
+        engine.register_result_at(player, opponent_a, &MatchResult::Win, start_time);
+        engine.register_result_at(player, opponent_b, &MatchResult::Loss, start_time);
+        engine.register_result_at(player, opponent_c, &MatchResult::Loss, start_time);
 
-        let rating_period_end_time = start_instant + Duration::from_secs(1);
+        let rating_period_end_time = start_time + Duration::from_secs(1);
 
         let new_rating: Rating = engine.player_rating_at(player, rating_period_end_time).0;
 
@@ -626,7 +627,7 @@ mod test {
         // Setup similar to paper setup
         let parameters = Parameters::default();
 
-        let start_instant = Instant::now();
+        let start_instant = SystemTime::UNIX_EPOCH;
 
         let mut engine =
             RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
@@ -685,21 +686,18 @@ mod test {
         // Setup similar to paper setup
         let parameters = Parameters::default();
 
-        let start_instant = Instant::now();
+        let start_time = SystemTime::UNIX_EPOCH;
 
         let mut engine =
-            RatingEngine::start_new_at(Duration::from_secs(60 * 60), start_instant, parameters);
+            RatingEngine::start_new_at(Duration::from_secs(60 * 60), start_time, parameters);
 
         let player = engine
-            .register_player_at(parameters.start_rating(), start_instant)
+            .register_player_at(parameters.start_rating(), start_time)
             .0;
 
-        let rating_at_start: Rating = engine.player_rating_at(player, start_instant).0;
+        let rating_at_start: Rating = engine.player_rating_at(player, start_time).0;
         let rating_after_year: Rating = engine
-            .player_rating_at(
-                player,
-                start_instant + Duration::from_secs(60 * 60 * 24 * 365),
-            )
+            .player_rating_at(player, start_time + Duration::from_secs(60 * 60 * 24 * 365))
             .0;
 
         // Deviation grows over time, rest should stay the same
