@@ -634,36 +634,35 @@ mod test {
         // Setup similar to paper setup
         let parameters = Parameters::default();
 
-        let start_instant = SystemTime::UNIX_EPOCH;
+        let start_time = SystemTime::UNIX_EPOCH;
 
-        let mut engine =
-            RatingEngine::start_new_at(Duration::from_secs(1), start_instant, parameters);
+        let mut engine = RatingEngine::start_new_at(Duration::from_secs(1), start_time, parameters);
 
         let player = engine
-            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_instant)
+            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_time)
             .0;
 
         let opponent = engine
             .register_player_at(
                 Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
-                start_instant,
+                start_time,
             )
             .0;
 
-        engine.register_result(player, opponent, &MatchResult::Win);
+        engine.register_result_at(player, opponent, &MatchResult::Win, start_time);
 
-        assert_approx_eq!(engine.elapsed_periods_at(start_instant), 0.0, f64::EPSILON);
-        let (elapsed_periods, closed_periods) = engine.maybe_close_rating_periods_at(start_instant);
+        assert_approx_eq!(engine.elapsed_periods_at(start_time), 0.0, f64::EPSILON);
+        let (elapsed_periods, closed_periods) = engine.maybe_close_rating_periods_at(start_time);
         assert_approx_eq!(elapsed_periods, 0.0, f64::EPSILON);
         assert_eq!(closed_periods, 0);
 
         // Test that rating doesn't radically change across rating periods
-        let right_before = start_instant + (Duration::from_secs(1) - Duration::from_nanos(1));
+        let right_before = start_time + (Duration::from_secs(1) - Duration::from_nanos(1));
         let (rating_right_before, closed_periods) =
             engine.player_rating_at::<Rating>(player, right_before);
         assert_eq!(closed_periods, 0);
 
-        let right_after = start_instant + (Duration::from_secs(1) + Duration::from_nanos(1));
+        let right_after = start_time + (Duration::from_secs(1) + Duration::from_nanos(1));
         let (rating_right_after, closed_periods) =
             engine.player_rating_at::<Rating>(player, right_after);
         assert_eq!(closed_periods, 1);
