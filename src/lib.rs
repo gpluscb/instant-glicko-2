@@ -114,6 +114,9 @@
 
 use constants::RATING_SCALING_RATIO;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 pub mod algorithm;
 pub mod constants;
 pub mod engine;
@@ -154,6 +157,7 @@ where
 
 /// A Glicko-2 skill rating.
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Rating {
     rating: f64,
     deviation: f64,
@@ -210,6 +214,7 @@ impl Rating {
 /// A Glicko-2 rating scaled to the internal rating scale.
 /// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ScaledRating {
     rating: f64,
     deviation: f64,
@@ -265,6 +270,7 @@ impl ScaledRating {
 
 /// The parameters used by the Glicko-2 algorithm.
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Parameters {
     start_rating: Rating,
     volatility_change: f64,

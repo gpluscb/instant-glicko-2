@@ -5,11 +5,15 @@ use std::f64::consts::PI;
 
 use crate::{constants, FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// A match result as it pertains to a specific player.
 ///
 /// This struct only holds the opponent's rating, and the player's score.
 /// The player's rating is stored outside of this struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PlayerResult {
     opponent: Rating,
     score: f64,
@@ -74,6 +78,7 @@ impl PlayerResult {
 /// This struct only holds the opponent's rating, and the player's score.
 /// The player's rating is stored outside of this struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ScaledPlayerResult {
     opponent: ScaledRating,
     score: f64,

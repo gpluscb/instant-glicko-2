@@ -3,9 +3,18 @@
 
 use std::slice::{IterMut, SliceIndex};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// A wrapper around [`Vec`] that only let's you append.
 /// This allows for indic into the [`Vec`] to always stay valid.
 #[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))
+)]
 pub struct PushOnlyVec<T>(Vec<T>);
 
 impl<T> From<Vec<T>> for PushOnlyVec<T> {

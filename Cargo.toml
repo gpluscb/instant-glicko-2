@@ -12,7 +12,11 @@ rust-version = "1.58.1"
 
 [package.metadata]
 msrv = "1.58.1"
+docs.rs.features = ["serde"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[dependencies]
+[dependencies.serde]
+version = "1.0"
+optional = true
+features = ["derive"]
