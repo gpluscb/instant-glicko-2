@@ -86,17 +86,17 @@ impl ScaledPlayer {
 /// A score of a match between a player and an opponent.
 pub trait Score {
     /// The player score.
-    /// Should be between 0.0 (loss) and 1.0 (win).
+    /// Should be between `0.0` (loss) and `1.0` (win).
     fn player_score(&self) -> f64;
     /// The oppoent score.
-    /// Should be between 0.0 (loss) and 1.0 (win).
+    /// Should be between `0.0` (loss) and `1.0` (win).
     fn opponent_score(&self) -> f64;
 }
 
 /// A simple match result.
 /// Can be `Win`, `Draw`, or `Loss`.
 ///
-/// Implements [`Score`] with a `Win` being 1.0 points, a `Loss` being 0.0 points, and a `Draw` being 0.5 points.
+/// Implements [`Score`] with a `Win` being `1.0` points, a `Loss` being `0.0` points, and a `Draw` being `0.5` points.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MatchResult {
@@ -507,7 +507,7 @@ impl RatingEngine {
     ///
     /// A tuple containing the elapsed periods in the current rating period *after* all previous periods have been closed as a fraction
     /// as well as the amount of rating periods that have been closed.
-    /// The elapsed periods will always be smaller than 1.
+    /// The elapsed periods will always be smaller than `1.0`.
     ///
     /// If `time` is earlier than the start of the last rating period,
     /// no rating periods will be closed and the returned value will be `(0.0, 0)`.

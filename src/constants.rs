@@ -16,7 +16,7 @@ pub const DEFAULT_START_RATING: Rating = Rating {
     volatility: 0.06,
 };
 /// Default system constant.
-/// This value is right in the middle of the reasonable range (0.3 to 1.2) described by "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf),
+/// This value is right in the middle of the reasonable range described by "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) (`0.3` to `1.2`),
 /// but it might need to be fine-tuned for your application.
 pub const DEFAULT_VOLATILITY_CHANGE: f64 = 0.75;
 

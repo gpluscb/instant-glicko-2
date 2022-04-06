@@ -179,7 +179,7 @@ impl Rating {
     ///  
     /// # Panics
     ///
-    /// This function panics if `deviation` or `volatility` was <= 0.
+    /// This function panics if `deviation <= 0.0` or `volatility <= 0.0`.
     #[must_use]
     pub fn new(rating: f64, deviation: f64, volatility: f64) -> Self {
         assert!(deviation > 0.0, "deviation <= 0: {deviation}");
@@ -236,7 +236,7 @@ impl ScaledRating {
     ///
     /// # Panics
     ///
-    /// This function panics if `deviation` or `volatility` was <= 0.
+    /// This function panics if `deviation` or `volatility <= 0.0`.
     #[must_use]
     pub fn new(rating: f64, deviation: f64, volatility: f64) -> Self {
         assert!(deviation > 0.0, "deviation <= 0: {deviation}");
@@ -285,7 +285,7 @@ impl Parameters {
     /// * `start_rating` - The rating value a new player starts out with. See also [`constants::DEFAULT_START_RATING`].
     /// * `volatility_change` - Also called "system constant" or "τ".
     /// This constant constraints change in volatility over time.
-    /// Reasonable choices are between 0.3 and 1.2.
+    /// Reasonable choices are between `0.3` and `1.2`.
     /// Small values prevent volatility and therefore rating from changing too much after improbable results.
     /// See also "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) and [`constants::DEFAULT_VOLATILITY_CHANGE`].
     /// * `convergence_tolerance` - The cutoff value for the converging loop algorithm in "Step 5.1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
@@ -293,7 +293,7 @@ impl Parameters {
     ///
     /// # Panics
     ///
-    /// This function panics if `convergence_tolerance` was <= 0.
+    /// This function panics if `convergence_tolerance <= 0.0`.
     #[must_use]
     pub fn new(start_rating: Rating, volatility_change: f64, convergence_tolerance: f64) -> Self {
         assert!(
@@ -327,7 +327,7 @@ impl Parameters {
 
     /// `volatility_change` - Also called "system constant" or "τ".
     /// This constant constraints change in volatility over time.
-    /// Reasonable choices are between 0.3 and 1.2.
+    /// Reasonable choices are between `0.3` and `1.2`.
     /// Small values prevent volatility and therefore rating from changing too much after improbable results.
     ///
     /// See also "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) and [`constants::DEFAULT_VOLATILITY_CHANGE`].
