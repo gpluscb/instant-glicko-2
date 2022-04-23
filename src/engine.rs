@@ -38,8 +38,8 @@ impl Player {
     }
 }
 
-impl FromWithParameters<ScaledPlayer> for Player {
-    fn from_with_parameters(scaled: ScaledPlayer, parameters: Parameters) -> Self {
+impl FromWithParameters<ScaledEnginePlayer> for Player {
+    fn from_with_parameters(scaled: ScaledEnginePlayer, parameters: Parameters) -> Self {
         Player {
             rating: scaled.rating.into_with_parameters(parameters),
             current_rating_period_results: scaled
@@ -53,14 +53,14 @@ impl FromWithParameters<ScaledPlayer> for Player {
 /// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ScaledPlayer {
+pub struct ScaledEnginePlayer {
     rating: ScaledRating,
     current_rating_period_results: Vec<ScaledPlayerResult>,
 }
 
-impl FromWithParameters<Player> for ScaledPlayer {
+impl FromWithParameters<Player> for ScaledEnginePlayer {
     fn from_with_parameters(player: Player, parameters: Parameters) -> Self {
-        ScaledPlayer {
+        ScaledEnginePlayer {
             rating: player.rating.into_with_parameters(parameters),
             current_rating_period_results: player
                 .current_rating_period_results
@@ -69,7 +69,7 @@ impl FromWithParameters<Player> for ScaledPlayer {
     }
 }
 
-impl ScaledPlayer {
+impl ScaledEnginePlayer {
     /// The rating of this player at the start of the current rating period.
     #[must_use]
     pub fn rating(&self) -> ScaledRating {
@@ -193,7 +193,7 @@ pub struct RatingEngine {
     rating_period_duration: Duration,
     last_rating_period_start: SystemTime,
     // This should be a PushOnlyVec because we hand out index references.
-    managed_players: PushOnlyVec<ScaledPlayer>,
+    managed_players: PushOnlyVec<ScaledEnginePlayer>,
     parameters: Parameters,
 }
 
@@ -312,7 +312,7 @@ impl RatingEngine {
 
         let index = self.managed_players.vec().len();
 
-        self.managed_players.push(ScaledPlayer {
+        self.managed_players.push(ScaledEnginePlayer {
             rating,
             current_rating_period_results: Vec::new(),
         });
@@ -556,6 +556,106 @@ impl RatingEngine {
     #[must_use]
     pub fn elapsed_periods_at(&self, time: SystemTime) -> f64 {
         if let Ok(elapsed_duration) = time.duration_since(self.last_rating_period_start) {
+            elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
+        } else {
+            0.0
+        }
+    }
+}
+
+pub struct ScaledPlayerGames {
+    player_rating: ScaledRating,
+    games: Vec<ScaledPlayerGame>,
+}
+
+pub struct ScaledPlayerGame {
+    timestamp: SystemTime,
+    opponent_rating: ScaledRating,
+    score: f64,
+}
+
+pub struct ScaledPlayer {
+    rating: ScaledRating,
+    last_rating_period_start: SystemTime,
+    current_rating_period_results: Vec<ScaledPlayerResult>,
+}
+
+// TODO: Maybe own module?
+
+pub struct RatingCalculator {
+    rating_period_duration: Duration,
+    parameters: Parameters,
+}
+
+#[allow(missing_docs)] // TODO
+impl RatingCalculator {
+    pub fn new(rating_period_duration: Duration, parameters: Parameters) -> Self {
+        RatingCalculator {
+            rating_period_duration,
+            parameters,
+        }
+    }
+
+    #[must_use]
+    pub fn player_rating_at<R>(&mut self, player: &mut ScaledPlayer, time: SystemTime) -> (R, u32)
+    where
+        R: FromWithParameters<ScaledRating>,
+    {
+        let (elapsed_periods, closed_periods) =
+            self.maybe_close_player_rating_periods_at(player, time);
+
+        let rating = algorithm::rate_player_scaled(
+            player.rating,
+            &player.current_rating_period_results,
+            elapsed_periods,
+            self.parameters,
+        )
+        .into_with_parameters(self.parameters);
+
+        (rating, closed_periods)
+    }
+
+    pub fn maybe_close_rating_periods<P>(&mut self, player: &mut ScaledPlayer) -> (f64, u32) {
+        self.maybe_close_player_rating_periods_at(player, SystemTime::now())
+    }
+
+    pub fn maybe_close_player_rating_periods_at(
+        &mut self,
+        player: &mut ScaledPlayer,
+        time: SystemTime,
+    ) -> (f64, u32) {
+        let elapsed_periods = self.elapsed_periods_at(player, time);
+
+        // We won't have negative elapsed_periods. Truncation this is the wanted result.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let periods_to_close = elapsed_periods as u32;
+
+        // Every result is in the first rating period that needs to be closed.
+        // This is guaranteed because we call this method before every time a new result gets added.
+        for _ in 0..periods_to_close {
+            algorithm::close_player_rating_period_scaled(
+                &mut player.rating,
+                &player.current_rating_period_results,
+                self.parameters,
+            );
+
+            // We have now submitted the results to the players rating
+            player.current_rating_period_results.clear();
+        }
+
+        player.last_rating_period_start += periods_to_close * self.rating_period_duration;
+
+        (elapsed_periods.fract(), periods_to_close)
+    }
+
+    #[must_use]
+    pub fn elapsed_periods(&self, player: &ScaledPlayer) -> f64 {
+        self.elapsed_periods_at(player, SystemTime::now())
+    }
+
+    #[must_use]
+    pub fn elapsed_periods_at(&self, player: &ScaledPlayer, time: SystemTime) -> f64 {
+        if let Ok(elapsed_duration) = time.duration_since(player.last_rating_period_start) {
             elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
         } else {
             0.0
