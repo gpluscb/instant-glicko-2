@@ -46,7 +46,7 @@ impl RatingCalculator {
         (rating, closed_periods)
     }
 
-    pub fn maybe_close_rating_periods<P>(&mut self, player: &mut ScaledPlayer) -> (f64, u32) {
+    pub fn maybe_close_player_rating_periods(&mut self, player: &mut ScaledPlayer) -> (f64, u32) {
         self.maybe_close_player_rating_periods_at(player, SystemTime::now())
     }
 
