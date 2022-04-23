@@ -1,15 +1,9 @@
 #![allow(missing_docs)] // TODO
 
-pub struct ScaledPlayerGames {
-    player_rating: ScaledRating,
-    games: Vec<ScaledPlayerGame>,
-}
+use std::time::{Duration, SystemTime};
 
-pub struct ScaledPlayerGame {
-    timestamp: SystemTime,
-    opponent_rating: ScaledRating,
-    score: f64,
-}
+use crate::algorithm::{self, ScaledPlayerResult};
+use crate::{FromWithParameters, IntoWithParameters, Parameters, ScaledRating};
 
 pub struct ScaledPlayer {
     rating: ScaledRating,
@@ -17,12 +11,15 @@ pub struct ScaledPlayer {
     current_rating_period_results: Vec<ScaledPlayerResult>,
 }
 
+// In this case, just calculator::Rating does not tell enough about the purpose of the struct in my opinion.
+#[allow(clippy::module_name_repetitions)]
 pub struct RatingCalculator {
     rating_period_duration: Duration,
     parameters: Parameters,
 }
 
 impl RatingCalculator {
+    #[must_use]
     pub fn new(rating_period_duration: Duration, parameters: Parameters) -> Self {
         RatingCalculator {
             rating_period_duration,
