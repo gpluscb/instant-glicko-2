@@ -5,10 +5,45 @@ use std::time::{Duration, SystemTime};
 use crate::algorithm::{self, ScaledPlayerResult};
 use crate::{FromWithParameters, IntoWithParameters, Parameters, ScaledRating};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ScaledPlayer {
     rating: ScaledRating,
     last_rating_period_start: SystemTime,
     current_rating_period_results: Vec<ScaledPlayerResult>,
+}
+
+impl ScaledPlayer {
+    #[must_use]
+    pub fn new(
+        rating: ScaledRating,
+        last_rating_period_start: SystemTime,
+        current_rating_period_results: Vec<ScaledPlayerResult>,
+    ) -> Self {
+        Self {
+            rating,
+            last_rating_period_start,
+            current_rating_period_results,
+        }
+    }
+
+    #[must_use]
+    pub fn rating(&self) -> ScaledRating {
+        self.rating
+    }
+
+    #[must_use]
+    pub fn last_rating_period_start(&self) -> SystemTime {
+        self.last_rating_period_start
+    }
+
+    #[must_use]
+    pub fn current_rating_period_results(&self) -> &[ScaledPlayerResult] {
+        &self.current_rating_period_results
+    }
 }
 
 // In this case, just calculator::Rating does not tell enough about the purpose of the struct in my opinion.
