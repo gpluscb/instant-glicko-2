@@ -27,6 +27,7 @@ impl RatingCalculator {
         }
     }
 
+    #[must_use]
     pub fn player_rating<R>(&mut self, player: &mut ScaledPlayer) -> (R, u32)
     where
         R: FromWithParameters<ScaledRating>,
