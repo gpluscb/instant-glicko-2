@@ -136,4 +136,14 @@ impl RatingCalculator {
             0.0
         }
     }
+
+    #[must_use]
+    pub fn rating_period_duration(&self) -> Duration {
+        self.rating_period_duration
+    }
+
+    #[must_use]
+    pub fn parameters(&self) -> Parameters {
+        self.parameters
+    }
 }
