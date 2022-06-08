@@ -67,7 +67,6 @@ impl<T> PushOnlyVec<T> {
     /// Returns an iterator that allows mutating each value.
     ///
     /// See also: [`[T]::iter_mut()`]
-    #[must_use]
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         self.0.iter_mut()
     }

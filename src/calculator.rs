@@ -27,6 +27,14 @@ impl RatingCalculator {
         }
     }
 
+    pub fn player_rating<R>(&mut self, player: &mut ScaledPlayer) -> (R, u32)
+    where
+        R: FromWithParameters<ScaledRating>,
+    {
+        self.player_rating_at(player, SystemTime::now())
+    }
+
+    // TODO: Generic player
     #[must_use]
     pub fn player_rating_at<R>(&mut self, player: &mut ScaledPlayer, time: SystemTime) -> (R, u32)
     where
