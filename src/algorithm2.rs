@@ -16,6 +16,14 @@ pub struct TimedInternalRating {
 
 impl TimedInternalRating {
     #[must_use]
+    pub fn new(last_updated: SystemTime, rating: ScaledRating) -> Self {
+        Self {
+            last_updated,
+            rating,
+        }
+    }
+
+    #[must_use]
     pub fn last_updated(&self) -> SystemTime {
         self.last_updated
     }
@@ -66,6 +74,15 @@ pub struct TimedInternalGame {
 
 impl TimedInternalGame {
     #[must_use]
+    pub fn new(time: SystemTime, opponent: TimedInternalRating, score: f64) -> Self {
+        Self {
+            time,
+            opponent,
+            score,
+        }
+    }
+
+    #[must_use]
     pub fn time(&self) -> SystemTime {
         self.time
     }
@@ -100,6 +117,14 @@ pub struct InternalGame {
 }
 
 impl InternalGame {
+    #[must_use]
+    pub fn new(opponent_rating: ScaledRating, score: f64) -> Self {
+        Self {
+            opponent_rating,
+            score,
+        }
+    }
+
     #[must_use]
     pub fn opponent_rating(&self) -> ScaledRating {
         self.opponent_rating
