@@ -5,12 +5,83 @@ use std::f64::consts::PI;
 use std::iter;
 use std::time::{Duration, SystemTime};
 
-use crate::{constants, FromWithParameters, Parameters, ScaledRating};
+use crate::{constants, FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-// TODO: Naming
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct TimedPublicRating {
+    last_updated: SystemTime,
+    rating: Rating,
+}
+
+impl TimedPublicRating {
+    #[must_use]
+    pub fn new(last_updated: SystemTime, rating: Rating) -> Self {
+        Self {
+            last_updated,
+            rating,
+        }
+    }
+
+    #[must_use]
+    pub fn last_updated(&self) -> SystemTime {
+        self.last_updated
+    }
+
+    #[must_use]
+    pub fn raw_public_rating(&self) -> Rating {
+        self.rating
+    }
+
+    #[must_use]
+    pub fn public_rating_now(
+        &self,
+        parameters: Parameters,
+        rating_period_duration: Duration,
+    ) -> Rating {
+        self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)
+    }
+
+    #[must_use]
+    pub fn public_rating_at(
+        &self,
+        time: SystemTime,
+        parameters: Parameters,
+        rating_period_duration: Duration,
+    ) -> Rating {
+        let new_deviation = calculate_pre_rating_period_value(
+            self.rating.volatility(),
+            self.rating.into_with_parameters(parameters),
+            self.elapsed_rating_periods(time, rating_period_duration),
+        );
+
+        Rating {
+            deviation: new_deviation,
+            ..self.rating
+        }
+    }
+
+    #[must_use]
+    fn elapsed_rating_periods(&self, time: SystemTime, rating_period_duration: Duration) -> f64 {
+        time.duration_since(self.last_updated)
+            .expect("Player rating was updated after the game to rate")
+            .as_secs_f64()
+            / rating_period_duration.as_secs_f64()
+    }
+}
+
+impl FromWithParameters<TimedInternalRating> for TimedPublicRating {
+    fn from_with_parameters(internal: TimedInternalRating, parameters: Parameters) -> Self {
+        TimedPublicRating {
+            last_updated: internal.last_updated,
+            rating: internal.rating.into_with_parameters(parameters),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalRating {
@@ -66,6 +137,15 @@ impl TimedInternalRating {
             .expect("Player rating was updated after the game to rate")
             .as_secs_f64()
             / rating_period_duration.as_secs_f64()
+    }
+}
+
+impl FromWithParameters<TimedPublicRating> for TimedInternalRating {
+    fn from_with_parameters(public: TimedPublicRating, parameters: Parameters) -> Self {
+        TimedInternalRating {
+            last_updated: public.last_updated,
+            rating: public.rating.into_with_parameters(parameters),
+        }
     }
 }
 
