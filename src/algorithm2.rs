@@ -267,48 +267,6 @@ impl FromWithParameters<TimedPublicGame> for TimedInternalGame {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InternalGame {
-    opponent_rating: ScaledRating,
-    score: f64,
-}
-
-impl InternalGame {
-    #[must_use]
-    pub fn new(opponent_rating: ScaledRating, score: f64) -> Self {
-        Self {
-            opponent_rating,
-            score,
-        }
-    }
-
-    #[must_use]
-    pub fn opponent_rating(&self) -> ScaledRating {
-        self.opponent_rating
-    }
-
-    #[must_use]
-    pub fn score(&self) -> f64 {
-        self.score
-    }
-
-    #[must_use]
-    pub fn from_timed_internal_game(
-        timed_game: TimedInternalGame,
-        rating_period_duration: Duration,
-    ) -> Self {
-        timed_game.to_internal_game(rating_period_duration)
-    }
-}
-
-impl FromWithParameters<PublicGame> for InternalGame {
-    fn from_with_parameters(public: PublicGame, parameters: Parameters) -> Self {
-        InternalGame {
-            opponent_rating: public.opponent_rating.into_with_parameters(parameters),
-            score: public.score,
-        }
-    }
-}
-
 pub struct PublicGame {
     opponent_rating: Rating,
     score: f64,
@@ -348,6 +306,50 @@ impl FromWithParameters<InternalGame> for PublicGame {
         PublicGame {
             opponent_rating: internal.opponent_rating.into_with_parameters(parameters),
             score: internal.score,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct InternalGame {
+    opponent_rating: ScaledRating,
+    score: f64,
+}
+
+impl InternalGame {
+    #[must_use]
+    pub fn new(opponent_rating: ScaledRating, score: f64) -> Self {
+        Self {
+            opponent_rating,
+            score,
+        }
+    }
+
+    #[must_use]
+    pub fn opponent_rating(&self) -> ScaledRating {
+        self.opponent_rating
+    }
+
+    #[must_use]
+    pub fn score(&self) -> f64 {
+        self.score
+    }
+
+    #[must_use]
+    pub fn from_timed_internal_game(
+        timed_game: TimedInternalGame,
+        rating_period_duration: Duration,
+    ) -> Self {
+        timed_game.to_internal_game(rating_period_duration)
+    }
+}
+
+impl FromWithParameters<PublicGame> for InternalGame {
+    fn from_with_parameters(public: PublicGame, parameters: Parameters) -> Self {
+        InternalGame {
+            opponent_rating: public.opponent_rating.into_with_parameters(parameters),
+            score: public.score,
         }
     }
 }
