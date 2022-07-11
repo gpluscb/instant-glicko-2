@@ -7,8 +7,12 @@ use std::time::{Duration, SystemTime};
 
 use crate::{constants, FromWithParameters, Parameters, ScaledRating};
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 // TODO: Naming
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalRating {
     last_updated: SystemTime,
     rating: ScaledRating,
@@ -66,6 +70,7 @@ impl TimedInternalRating {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalGame {
     time: SystemTime,
     opponent: TimedInternalRating,
@@ -111,6 +116,7 @@ impl TimedInternalGame {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InternalGame {
     opponent_rating: ScaledRating,
     score: f64,
