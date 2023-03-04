@@ -274,6 +274,13 @@ impl FromWithParameters<TimedInternalGame> for TimedPublicGame {
     }
 }
 
+/// Game information encompassing
+/// - The time the game was recorded
+/// - The [`TimedInternalRating`] of the opponent
+/// - The score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win)
+///
+/// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
+/// This is because it is used to register games on and therefore update the player's rating struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalGame {
@@ -283,8 +290,16 @@ pub struct TimedInternalGame {
 }
 
 impl TimedInternalGame {
+    /// Creates a new [`TimedInternalGame`] at the given `time` with the given `opponent` and `score`.
+    /// `score` is a number between 0.0 (decicive opponent win) and `1.0` (decicive player win).
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
     pub fn new(time: SystemTime, opponent: TimedInternalRating, score: f64) -> Self {
+        assert!((0.0..=1.0).contains(&score));
+
         Self {
             time,
             opponent,
@@ -292,21 +307,30 @@ impl TimedInternalGame {
         }
     }
 
+    /// The time this game was recorded.
     #[must_use]
     pub fn time(&self) -> SystemTime {
         self.time
     }
 
+    /// The opponent's rating.
     #[must_use]
     pub fn opponent(&self) -> TimedInternalRating {
         self.opponent
     }
 
+    /// The game score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win).
     #[must_use]
     pub fn score(&self) -> f64 {
         self.score
     }
 
+    /// Converts this [`TimedInternalGame`] to an [`InternalGame`],
+    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the opponent rating was updated after the game was recorded.
     #[must_use]
     pub fn to_internal_game(&self, rating_period_duration: Duration) -> InternalGame {
         let opponent_rating = self
