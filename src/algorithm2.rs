@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// This is a *public* rating, meaning it is meant to be displayed to users,
 /// but it needs to be converted to an internal rating before use in rating calculations.
 ///
-/// The timing of the rating is important because the deviation increases over the time no matches are recorded.
+/// The timing of the rating is important because the deviation increases over the time no games are recorded.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedPublicRating {
@@ -41,7 +41,7 @@ impl TimedPublicRating {
         self.rating
     }
 
-    /// The rating with the deviation updated to the current time after no matches were played since the last update.
+    /// The rating with the deviation updated to the current time after no games were played since the last update.
     /// Convenience for `self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)`.
     ///
     /// # Panics
@@ -56,7 +56,7 @@ impl TimedPublicRating {
         self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)
     }
 
-    /// The rating with the deviation updated to the given time after no matches were played since the last update.
+    /// The rating with the deviation updated to the given time after no games were played since the last update.
     ///
     /// # Panics
     ///
@@ -105,7 +105,7 @@ impl FromWithParameters<TimedInternalRating> for TimedPublicRating {
 /// This is an *internal* rating, meaning it can be used immediately in rating calculations,
 /// but should be converted to a public rating before displaying to users.
 ///
-/// The timing of the rating is important because the deviation increases over the time no matches are recorded.
+/// The timing of the rating is important because the deviation increases over the time no games are recorded.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalRating {
@@ -135,7 +135,7 @@ impl TimedInternalRating {
         self.rating
     }
 
-    /// The rating with the deviation updated to the current time after no matches were played since the last update.
+    /// The rating with the deviation updated to the current time after no games were played since the last update.
     /// Convenience for `self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)`.
     ///
     /// # Panics
@@ -146,7 +146,7 @@ impl TimedInternalRating {
         self.internal_rating_at(SystemTime::now(), rating_period_duration)
     }
 
-    /// The rating with the deviation updated to the given time after no matches were played since the last update.
+    /// The rating with the deviation updated to the given time after no games were played since the last update.
     ///
     /// # Panics
     ///
