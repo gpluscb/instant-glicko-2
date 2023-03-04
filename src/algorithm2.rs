@@ -1,3 +1,5 @@
+//! This module hosts the methods and types necessary to perform Glicko-2 calculations with fractional rating periods.
+
 use std::f64::consts::PI;
 use std::iter;
 use std::time::{Duration, SystemTime};
