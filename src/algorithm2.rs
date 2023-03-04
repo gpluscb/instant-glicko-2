@@ -1,6 +1,3 @@
-// TODO: Docs
-#![allow(missing_docs)]
-
 use std::f64::consts::PI;
 use std::iter;
 use std::time::{Duration, SystemTime};
@@ -10,6 +7,11 @@ use crate::{constants, FromWithParameters, IntoWithParameters, Parameters, Ratin
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+/// A rating at a specific point in time.
+/// This is a *public* rating, meaning it is meant to be displayed to users,
+/// but it needs to be converted to an internal rating before use in rating calculations.
+///
+/// The timing of the rating is important because the deviation increases over the time no matches are recorded.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedPublicRating {
@@ -18,6 +20,7 @@ pub struct TimedPublicRating {
 }
 
 impl TimedPublicRating {
+    /// Creates a new [`TimedPublicRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
     pub fn new(last_updated: SystemTime, rating: Rating) -> Self {
         Self {
@@ -26,16 +29,24 @@ impl TimedPublicRating {
         }
     }
 
+    /// The time this rating was last updated.
     #[must_use]
     pub fn last_updated(&self) -> SystemTime {
         self.last_updated
     }
 
+    /// The rating at the time it was last updated.
     #[must_use]
     pub fn raw_public_rating(&self) -> Rating {
         self.rating
     }
 
+    /// The rating with the deviation updated to the current time after no matches were played since the last update.
+    /// Convenience for `self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `last_updated` is in the future.
     #[must_use]
     pub fn public_rating_now(
         &self,
@@ -45,6 +56,11 @@ impl TimedPublicRating {
         self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)
     }
 
+    /// The rating with the deviation updated to the given time after no matches were played since the last update.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `last_updated` is after `time`.
     #[must_use]
     pub fn public_rating_at(
         &self,
@@ -64,6 +80,9 @@ impl TimedPublicRating {
         }
     }
 
+    /// # Panics
+    ///
+    /// This function panics if `time` is **before** the last rating update.
     #[must_use]
     fn elapsed_rating_periods(&self, time: SystemTime, rating_period_duration: Duration) -> f64 {
         time.duration_since(self.last_updated)
