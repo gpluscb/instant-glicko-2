@@ -190,6 +190,13 @@ impl FromWithParameters<TimedPublicRating> for TimedInternalRating {
     }
 }
 
+/// Game information encompassing
+/// - The time the game was recorded
+/// - The [`TimedPublicRating`] of the opponent
+/// - The score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win)
+///
+/// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
+/// This is because it is used to register games on and therefore update the player's rating struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedPublicGame {
@@ -199,8 +206,16 @@ pub struct TimedPublicGame {
 }
 
 impl TimedPublicGame {
+    /// Creates a new [`TimedPublicGame`] at the given `time` with the given `opponent` and `score`.
+    /// `score` is a number between 0.0 (decicive opponent win) and `1.0` (decicive player win).
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
     pub fn new(time: SystemTime, opponent: TimedPublicRating, score: f64) -> Self {
+        assert!((0.0..=1.0).contains(&score));
+
         Self {
             time,
             opponent,
@@ -208,21 +223,30 @@ impl TimedPublicGame {
         }
     }
 
+    /// The time this game was recorded.
     #[must_use]
     pub fn time(&self) -> SystemTime {
         self.time
     }
 
+    /// The opponent's rating.
     #[must_use]
     pub fn opponent(&self) -> TimedPublicRating {
         self.opponent
     }
 
+    /// The game score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win).
     #[must_use]
     pub fn score(&self) -> f64 {
         self.score
     }
 
+    /// Converts this [`TimedPublicGame`] to a [`PublicGame`],
+    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the opponent rating was updated after the game was recorded.
     #[must_use]
     pub fn to_public_game(
         &self,
