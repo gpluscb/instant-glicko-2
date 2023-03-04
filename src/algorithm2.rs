@@ -101,6 +101,11 @@ impl FromWithParameters<TimedInternalRating> for TimedPublicRating {
     }
 }
 
+/// A rating at a specific point in time.
+/// This is an *internal* rating, meaning it can be used immediately in rating calculations,
+/// but should be converted to a public rating before displaying to users.
+///
+/// The timing of the rating is important because the deviation increases over the time no matches are recorded.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalRating {
@@ -109,6 +114,7 @@ pub struct TimedInternalRating {
 }
 
 impl TimedInternalRating {
+    /// Creates a new [`TimedInternalRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
     pub fn new(last_updated: SystemTime, rating: ScaledRating) -> Self {
         Self {
@@ -117,21 +123,34 @@ impl TimedInternalRating {
         }
     }
 
+    /// The time this rating was last updated.
     #[must_use]
     pub fn last_updated(&self) -> SystemTime {
         self.last_updated
     }
 
+    /// The rating at the time it was last updated.
     #[must_use]
     pub fn raw_internal_rating(&self) -> ScaledRating {
         self.rating
     }
 
+    /// The rating with the deviation updated to the current time after no matches were played since the last update.
+    /// Convenience for `self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)`.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `last_updated` is in the future.
     #[must_use]
     pub fn internal_rating_now(&self, rating_period_duration: Duration) -> ScaledRating {
         self.internal_rating_at(SystemTime::now(), rating_period_duration)
     }
 
+    /// The rating with the deviation updated to the given time after no matches were played since the last update.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `last_updated` is after `time`.
     #[must_use]
     pub fn internal_rating_at(
         &self,
@@ -150,6 +169,9 @@ impl TimedInternalRating {
         }
     }
 
+    /// # Panics
+    ///
+    /// This function panics if `time` is **before** the last rating update.
     #[must_use]
     fn elapsed_rating_periods(&self, time: SystemTime, rating_period_duration: Duration) -> f64 {
         time.duration_since(self.last_updated)
