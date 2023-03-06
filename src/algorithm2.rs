@@ -48,7 +48,7 @@ impl TimedPublicRating {
     ///
     /// # Panics
     ///
-    /// This function panics if `last_updated` is in the future.
+    /// This function panics if `last_updated` is in the future, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn public_rating_now(
         &self,
@@ -62,7 +62,7 @@ impl TimedPublicRating {
     ///
     /// # Panics
     ///
-    /// This function panics if `last_updated` is after `time`.
+    /// This function panics if `last_updated` is after `time`, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn public_rating_at(
         &self,
@@ -84,7 +84,7 @@ impl TimedPublicRating {
 
     /// # Panics
     ///
-    /// This function panics if `time` is **before** the last rating update.
+    /// This function panics if `time` is **before** the last rating update, or if the `rating_period_duration` is zero.
     #[must_use]
     fn elapsed_rating_periods(&self, time: SystemTime, rating_period_duration: Duration) -> f64 {
         time.duration_since(self.last_updated)
@@ -142,7 +142,7 @@ impl TimedInternalRating {
     ///
     /// # Panics
     ///
-    /// This function panics if `last_updated` is in the future.
+    /// This function panics if `last_updated` is in the future, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn internal_rating_now(&self, rating_period_duration: Duration) -> ScaledRating {
         self.internal_rating_at(SystemTime::now(), rating_period_duration)
@@ -152,7 +152,7 @@ impl TimedInternalRating {
     ///
     /// # Panics
     ///
-    /// This function panics if `last_updated` is after `time`.
+    /// This function panics if `last_updated` is after `time`, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn internal_rating_at(
         &self,
@@ -173,7 +173,7 @@ impl TimedInternalRating {
 
     /// # Panics
     ///
-    /// This function panics if `time` is **before** the last rating update.
+    /// This function panics if `time` is **before** the last rating update, or if the `rating_period_duration` is zero.
     #[must_use]
     fn elapsed_rating_periods(&self, time: SystemTime, rating_period_duration: Duration) -> f64 {
         time.duration_since(self.last_updated)
@@ -248,19 +248,19 @@ impl TimedPublicGame {
     ///
     /// # Panics
     ///
-    /// This function panics if the opponent rating was updated after the game was recorded.
+    /// This function panics if the opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn to_public_game(
         &self,
         parameters: Parameters,
         rating_period_duration: Duration,
     ) -> PublicGame {
-        let opponent_rating =
+        let opponent =
             self.opponent()
                 .public_rating_at(self.time, parameters, rating_period_duration);
 
         PublicGame {
-            opponent_rating,
+            opponent,
             score: self.score,
         }
     }
@@ -332,15 +332,15 @@ impl TimedInternalGame {
     ///
     /// # Panics
     ///
-    /// This function panics if the opponent rating was updated after the game was recorded.
+    /// This function panics if the opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn to_internal_game(&self, rating_period_duration: Duration) -> InternalGame {
-        let opponent_rating = self
+        let opponent = self
             .opponent()
             .internal_rating_at(self.time, rating_period_duration);
 
         InternalGame {
-            opponent_rating,
+            opponent,
             score: self.score,
         }
     }
@@ -356,32 +356,50 @@ impl FromWithParameters<TimedPublicGame> for TimedInternalGame {
     }
 }
 
+/// Game information encompassing the opponent's rating at the time of the game
+/// as well as the game score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win).
+///
+/// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
+/// This is because it is used in relation to registering games on and therefore update the player's rating struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PublicGame {
-    opponent_rating: Rating,
+    opponent: Rating,
     score: f64,
 }
 
 impl PublicGame {
+    /// Creates a new [`PublicGame`] with the given `opponent` and `score`.
+    /// `score` is a number between 0.0 (decicive opponent win) and `1.0` (decicive player win).
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(opponent_rating: Rating, score: f64) -> Self {
-        Self {
-            opponent_rating,
-            score,
-        }
+    pub fn new(opponent: Rating, score: f64) -> Self {
+        assert!((0.0..=1.0).contains(&score));
+
+        Self { opponent, score }
     }
 
+    /// The opponent's rating.
     #[must_use]
-    pub fn opponent_rating(&self) -> Rating {
-        self.opponent_rating
+    pub fn opponent(&self) -> Rating {
+        self.opponent
     }
 
+    /// The game score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win).
     #[must_use]
     pub fn score(&self) -> f64 {
         self.score
     }
 
+    /// Converts a [`TimedPublicGame`] to a [`PublicGame`],
+    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `timed_game`'s opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn from_timed_public_game(
         timed_game: TimedPublicGame,
@@ -395,38 +413,56 @@ impl PublicGame {
 impl FromWithParameters<InternalGame> for PublicGame {
     fn from_with_parameters(internal: InternalGame, parameters: Parameters) -> Self {
         PublicGame {
-            opponent_rating: internal.opponent_rating.into_with_parameters(parameters),
+            opponent: internal.opponent.into_with_parameters(parameters),
             score: internal.score,
         }
     }
 }
 
+/// Game information encompassing the opponent's internal rating at the time of the game
+/// as well as the game score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win).
+///
+/// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
+/// This is because it is used in relation to registering games on and therefore update the player's rating struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InternalGame {
-    opponent_rating: ScaledRating,
+    opponent: ScaledRating,
     score: f64,
 }
 
 impl InternalGame {
+    /// Creates a new [`InternalGame`] with the given `opponent` and `score`.
+    /// `score` is a number between 0.0 (decicive opponent win) and `1.0` (decicive player win).
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(opponent_rating: ScaledRating, score: f64) -> Self {
-        Self {
-            opponent_rating,
-            score,
-        }
+    pub fn new(opponent: ScaledRating, score: f64) -> Self {
+        assert!((0.0..=1.0).contains(&score));
+
+        Self { opponent, score }
     }
 
+    /// The opponent's rating.
     #[must_use]
-    pub fn opponent_rating(&self) -> ScaledRating {
-        self.opponent_rating
+    pub fn opponent(&self) -> ScaledRating {
+        self.opponent
     }
 
+    /// The game score as a number between `0.0` (decicive opponent win) and `1.0` (decicive player win).
     #[must_use]
     pub fn score(&self) -> f64 {
         self.score
     }
 
+    /// Converts a [`TimedInternalGame`] to an [`InternalGame`],
+    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if `timed_game`'s opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn from_timed_internal_game(
         timed_game: TimedInternalGame,
@@ -439,12 +475,17 @@ impl InternalGame {
 impl FromWithParameters<PublicGame> for InternalGame {
     fn from_with_parameters(public: PublicGame, parameters: Parameters) -> Self {
         InternalGame {
-            opponent_rating: public.opponent_rating.into_with_parameters(parameters),
+            opponent: public.opponent.into_with_parameters(parameters),
             score: public.score,
         }
     }
 }
 
+/// Calculates the new internal player rating after a `TimedInternalGame` using the Glicko-2 algorithm.
+///
+/// # Panics
+///
+/// This function panics if the `player_rating` was updated after the game was played, or if the `rating_period_duration` is zero.
 #[must_use]
 pub fn rate_game(
     player_rating: TimedInternalRating,
@@ -520,7 +561,7 @@ fn calculate_estimated_variance(
     1.0 / games
         .into_iter()
         .map(|game| {
-            let opponent_rating = game.opponent_rating();
+            let opponent_rating = game.opponent();
 
             let g = calculate_g(opponent_rating.deviation());
             let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
@@ -541,7 +582,7 @@ fn calculate_estimated_improvement(
         * games
             .into_iter()
             .map(|game| {
-                let opponent_rating = game.opponent_rating();
+                let opponent_rating = game.opponent();
 
                 let g = calculate_g(opponent_rating.deviation());
                 let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
@@ -699,7 +740,7 @@ fn calculate_new_rating(
             * games
                 .into_iter()
                 .map(|game| {
-                    let opponent_rating = game.opponent_rating();
+                    let opponent_rating = game.opponent();
 
                     let g = calculate_g(opponent_rating.deviation());
                     let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
