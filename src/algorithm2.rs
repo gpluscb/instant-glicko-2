@@ -70,16 +70,19 @@ impl TimedPublicRating {
         parameters: Parameters,
         rating_period_duration: Duration,
     ) -> Rating {
+        let internal_rating: ScaledRating = self.rating.into_with_parameters(parameters);
+
         let new_deviation = calculate_pre_rating_period_value(
-            self.rating.volatility(),
-            self.rating.into_with_parameters(parameters),
+            internal_rating.volatility(),
+            internal_rating,
             self.elapsed_rating_periods(time, rating_period_duration),
         );
 
-        Rating {
+        ScaledRating {
             deviation: new_deviation,
-            ..self.rating
+            ..internal_rating
         }
+        .into_with_parameters(parameters)
     }
 
     /// # Panics
@@ -494,7 +497,7 @@ pub fn rate_game(
     parameters: Parameters,
 ) -> TimedInternalRating {
     assert!(
-        player_rating.last_updated() < game.time(),
+        player_rating.last_updated() <= game.time(),
         "Game was played before last player update"
     );
 
@@ -748,4 +751,78 @@ fn calculate_new_rating(
                     g * (game.score() - e)
                 })
                 .sum::<f64>()
+}
+
+#[cfg(test)]
+mod test {
+    use std::time::{Duration, SystemTime};
+
+    use crate::algorithm2::{TimedInternalRating, TimedPublicGame, TimedPublicRating};
+    use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating};
+
+    macro_rules! assert_approx_eq {
+        ($a:expr, $b:expr, $tolerance:expr) => {{
+            let a_val = $a;
+            let b_val = $b;
+
+            assert!(
+                (a_val - b_val).abs() <= $tolerance,
+                "{} = {a_val} is not approximately equal to {} = {b_val}",
+                stringify!($a),
+                stringify!($b)
+            )
+        }};
+    }
+
+    /// This tests the example calculation in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
+    #[test]
+    fn test_paper_example() {
+        let parameters = Parameters::default().with_volatility_change(0.5);
+
+        let start_time = SystemTime::UNIX_EPOCH;
+        let rating_period_duration = Duration::from_secs(1);
+        let end_time = start_time + rating_period_duration;
+
+        let player = TimedPublicRating::new(start_time, Rating::new(1500.0, 200.0, 0.06));
+
+        // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
+        // Constructor asserts it to be > 0.0
+        let opponent_a = TimedPublicRating::new(
+            start_time,
+            Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+        );
+        let opponent_b = TimedPublicRating::new(
+            start_time,
+            Rating::new(1550.0, 100.0, parameters.start_rating().volatility()),
+        );
+        let opponent_c = TimedPublicRating::new(
+            start_time,
+            Rating::new(1700.0, 300.0, parameters.start_rating().volatility()),
+        );
+
+        let games = [
+            TimedPublicGame::new(start_time, opponent_a, 1.0),
+            TimedPublicGame::new(start_time, opponent_b, 0.0),
+            TimedPublicGame::new(start_time, opponent_c, 0.0),
+        ];
+
+        let mut new_rating: TimedInternalRating = player.into_with_parameters(parameters);
+
+        // All games are considered to occurr at the same time in the example
+        for game in games {
+            new_rating = super::rate_game(
+                new_rating,
+                game.into_with_parameters(parameters),
+                rating_period_duration,
+                parameters,
+            );
+        }
+
+        let new_public_rating = TimedPublicRating::from_with_parameters(new_rating, parameters)
+            .public_rating_at(end_time, parameters, rating_period_duration);
+
+        assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.5);
+        assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.5);
+        assert_approx_eq!(new_public_rating.volatility(), 0.05999, 0.0001);
+    }
 }
