@@ -4,7 +4,9 @@ use std::f64::consts::PI;
 use std::iter;
 use std::time::{Duration, SystemTime};
 
-use crate::{constants, FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
+use crate::{
+    constants, FromWithParameters, InternalRating, IntoWithParameters, Parameters, PublicRating,
+};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -18,13 +20,13 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedPublicRating {
     last_updated: SystemTime,
-    rating: Rating,
+    rating: PublicRating,
 }
 
 impl TimedPublicRating {
     /// Creates a new [`TimedPublicRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
-    pub fn new(last_updated: SystemTime, rating: Rating) -> Self {
+    pub fn new(last_updated: SystemTime, rating: PublicRating) -> Self {
         Self {
             last_updated,
             rating,
@@ -39,7 +41,7 @@ impl TimedPublicRating {
 
     /// The rating at the time it was last updated.
     #[must_use]
-    pub fn raw_public_rating(&self) -> Rating {
+    pub fn raw_public_rating(&self) -> PublicRating {
         self.rating
     }
 
@@ -54,7 +56,7 @@ impl TimedPublicRating {
         &self,
         parameters: Parameters,
         rating_period_duration: Duration,
-    ) -> Rating {
+    ) -> PublicRating {
         self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)
     }
 
@@ -69,8 +71,8 @@ impl TimedPublicRating {
         time: SystemTime,
         parameters: Parameters,
         rating_period_duration: Duration,
-    ) -> Rating {
-        let internal_rating: ScaledRating = self.rating.into_with_parameters(parameters);
+    ) -> PublicRating {
+        let internal_rating: InternalRating = self.rating.into_with_parameters(parameters);
 
         let new_deviation = calculate_pre_rating_period_value(
             internal_rating.volatility(),
@@ -78,7 +80,7 @@ impl TimedPublicRating {
             self.elapsed_rating_periods(time, rating_period_duration),
         );
 
-        ScaledRating {
+        InternalRating {
             deviation: new_deviation,
             ..internal_rating
         }
@@ -115,13 +117,13 @@ impl FromWithParameters<TimedInternalRating> for TimedPublicRating {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TimedInternalRating {
     last_updated: SystemTime,
-    rating: ScaledRating,
+    rating: InternalRating,
 }
 
 impl TimedInternalRating {
     /// Creates a new [`TimedInternalRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
-    pub fn new(last_updated: SystemTime, rating: ScaledRating) -> Self {
+    pub fn new(last_updated: SystemTime, rating: InternalRating) -> Self {
         Self {
             last_updated,
             rating,
@@ -136,7 +138,7 @@ impl TimedInternalRating {
 
     /// The rating at the time it was last updated.
     #[must_use]
-    pub fn raw_internal_rating(&self) -> ScaledRating {
+    pub fn raw_internal_rating(&self) -> InternalRating {
         self.rating
     }
 
@@ -147,7 +149,7 @@ impl TimedInternalRating {
     ///
     /// This function panics if `last_updated` is in the future, or if the `rating_period_duration` is zero.
     #[must_use]
-    pub fn internal_rating_now(&self, rating_period_duration: Duration) -> ScaledRating {
+    pub fn internal_rating_now(&self, rating_period_duration: Duration) -> InternalRating {
         self.internal_rating_at(SystemTime::now(), rating_period_duration)
     }
 
@@ -161,14 +163,14 @@ impl TimedInternalRating {
         &self,
         time: SystemTime,
         rating_period_duration: Duration,
-    ) -> ScaledRating {
+    ) -> InternalRating {
         let new_deviation = calculate_pre_rating_period_value(
             self.rating.volatility(),
             self.rating,
             self.elapsed_rating_periods(time, rating_period_duration),
         );
 
-        ScaledRating {
+        InternalRating {
             deviation: new_deviation,
             ..self.rating
         }
@@ -367,7 +369,7 @@ impl FromWithParameters<TimedPublicGame> for TimedInternalGame {
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PublicGame {
-    opponent: Rating,
+    opponent: PublicRating,
     score: f64,
 }
 
@@ -379,7 +381,7 @@ impl PublicGame {
     ///
     /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(opponent: Rating, score: f64) -> Self {
+    pub fn new(opponent: PublicRating, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
         Self { opponent, score }
@@ -387,7 +389,7 @@ impl PublicGame {
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> Rating {
+    pub fn opponent(&self) -> PublicRating {
         self.opponent
     }
 
@@ -430,7 +432,7 @@ impl FromWithParameters<InternalGame> for PublicGame {
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct InternalGame {
-    opponent: ScaledRating,
+    opponent: InternalRating,
     score: f64,
 }
 
@@ -442,7 +444,7 @@ impl InternalGame {
     ///
     /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(opponent: ScaledRating, score: f64) -> Self {
+    pub fn new(opponent: InternalRating, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
         Self { opponent, score }
@@ -450,7 +452,7 @@ impl InternalGame {
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> ScaledRating {
+    pub fn opponent(&self) -> InternalRating {
         self.opponent
     }
 
@@ -489,6 +491,8 @@ impl FromWithParameters<PublicGame> for InternalGame {
 /// # Panics
 ///
 /// This function panics if the `player_rating` was updated after the game was played, or if the `rating_period_duration` is zero.
+///
+/// It can also panic if `parameters.convergance_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_game(
     player_rating: TimedInternalRating,
@@ -545,7 +549,7 @@ pub fn rate_game(
     // Step 8. (converting to display scale) doesn't apply
     TimedInternalRating {
         last_updated: game_time,
-        rating: ScaledRating {
+        rating: InternalRating {
             rating: new_rating,
             deviation: new_deviation,
             volatility: new_volatility,
@@ -558,7 +562,7 @@ pub fn rate_game(
 /// This function returns [`f64::NAN`] if the results iterator is empty.
 #[must_use]
 fn calculate_estimated_variance(
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     games: impl IntoIterator<Item = InternalGame>,
 ) -> f64 {
     1.0 / games
@@ -578,7 +582,7 @@ fn calculate_estimated_variance(
 #[must_use]
 fn calculate_estimated_improvement(
     estimated_variance: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     games: impl IntoIterator<Item = InternalGame>,
 ) -> f64 {
     estimated_variance
@@ -617,7 +621,7 @@ fn calculate_e(g: f64, player_rating: f64, opponent_rating: f64) -> f64 {
 fn calculate_new_volatility(
     estimated_improvement: f64,
     estimated_variance: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     parameters: Parameters,
 ) -> f64 {
     let deviation = player_rating.deviation();
@@ -711,7 +715,7 @@ fn calculate_new_volatility(
 #[must_use]
 fn calculate_pre_rating_period_value(
     new_volatility: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     elapsed_periods: f64,
 ) -> f64 {
     let current_deviation = player_rating.deviation();
@@ -734,7 +738,7 @@ fn calculate_new_rating_deviation(pre_rating_period_value: f64, estimated_varian
 #[must_use]
 fn calculate_new_rating(
     new_deviation: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     games: impl IntoIterator<Item = InternalGame>,
 ) -> f64 {
     player_rating.rating()
@@ -758,7 +762,7 @@ mod test {
     use std::time::{Duration, SystemTime};
 
     use crate::algorithm2::{TimedInternalRating, TimedPublicGame, TimedPublicRating};
-    use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating};
+    use crate::{FromWithParameters, IntoWithParameters, Parameters, PublicRating};
 
     macro_rules! assert_approx_eq {
         ($a:expr, $b:expr, $tolerance:expr) => {{
@@ -783,21 +787,21 @@ mod test {
         let rating_period_duration = Duration::from_secs(1);
         let end_time = start_time + rating_period_duration;
 
-        let player = TimedPublicRating::new(start_time, Rating::new(1500.0, 200.0, 0.06));
+        let player = TimedPublicRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
 
         // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
         // Constructor asserts it to be > 0.0
         let opponent_a = TimedPublicRating::new(
             start_time,
-            Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+            PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
         );
         let opponent_b = TimedPublicRating::new(
             start_time,
-            Rating::new(1550.0, 100.0, parameters.start_rating().volatility()),
+            PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility()),
         );
         let opponent_c = TimedPublicRating::new(
             start_time,
-            Rating::new(1700.0, 300.0, parameters.start_rating().volatility()),
+            PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility()),
         );
 
         let games = [
@@ -821,6 +825,7 @@ mod test {
         let new_public_rating = TimedPublicRating::from_with_parameters(new_rating, parameters)
             .public_rating_at(end_time, parameters, rating_period_duration);
 
+        // larger tolerances because we are not *actually* processing all games at once
         assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.5);
         assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.5);
         assert_approx_eq!(new_public_rating.volatility(), 0.05999, 0.0001);

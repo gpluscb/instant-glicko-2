@@ -3,7 +3,7 @@
 use std::time::{Duration, SystemTime};
 
 use crate::algorithm::{self, ScaledPlayerResult};
-use crate::{FromWithParameters, IntoWithParameters, Parameters, ScaledRating};
+use crate::{FromWithParameters, InternalRating, IntoWithParameters, Parameters};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ScaledPlayer {
-    rating: ScaledRating,
+    rating: InternalRating,
     last_rating_period_start: SystemTime,
     current_rating_period_results: Vec<ScaledPlayerResult>,
 }
@@ -19,7 +19,7 @@ pub struct ScaledPlayer {
 impl ScaledPlayer {
     #[must_use]
     pub fn new(
-        rating: ScaledRating,
+        rating: InternalRating,
         last_rating_period_start: SystemTime,
         current_rating_period_results: Vec<ScaledPlayerResult>,
     ) -> Self {
@@ -31,7 +31,7 @@ impl ScaledPlayer {
     }
 
     #[must_use]
-    pub fn rating(&self) -> ScaledRating {
+    pub fn rating(&self) -> InternalRating {
         self.rating
     }
 
@@ -65,7 +65,7 @@ impl RatingCalculator {
     #[must_use]
     pub fn player_rating<R>(&mut self, player: &mut ScaledPlayer) -> (R, u32)
     where
-        R: FromWithParameters<ScaledRating>,
+        R: FromWithParameters<InternalRating>,
     {
         self.player_rating_at(player, SystemTime::now())
     }
@@ -74,7 +74,7 @@ impl RatingCalculator {
     #[must_use]
     pub fn player_rating_at<R>(&mut self, player: &mut ScaledPlayer, time: SystemTime) -> (R, u32)
     where
-        R: FromWithParameters<ScaledRating>,
+        R: FromWithParameters<InternalRating>,
     {
         let (elapsed_periods, closed_periods) =
             self.maybe_close_player_rating_periods_at(player, time);

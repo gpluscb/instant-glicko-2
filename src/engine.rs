@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::algorithm::{self, PlayerResult, ScaledPlayerResult};
 use crate::util::PushOnlyVec;
-use crate::{FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
+use crate::{FromWithParameters, InternalRating, IntoWithParameters, Parameters, PublicRating};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -20,14 +20,14 @@ pub struct PlayerHandle(usize);
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Player {
-    rating: Rating,
+    rating: PublicRating,
     current_rating_period_results: Vec<PlayerResult>,
 }
 
 impl Player {
     /// The rating of this player at the start of the current rating period.
     #[must_use]
-    pub fn rating(&self) -> Rating {
+    pub fn rating(&self) -> PublicRating {
         self.rating
     }
 
@@ -54,7 +54,7 @@ impl FromWithParameters<ScaledEnginePlayer> for Player {
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ScaledEnginePlayer {
-    rating: ScaledRating,
+    rating: InternalRating,
     current_rating_period_results: Vec<ScaledPlayerResult>,
 }
 
@@ -72,7 +72,7 @@ impl FromWithParameters<Player> for ScaledEnginePlayer {
 impl ScaledEnginePlayer {
     /// The rating of this player at the start of the current rating period.
     #[must_use]
-    pub fn rating(&self) -> ScaledRating {
+    pub fn rating(&self) -> InternalRating {
         self.rating
     }
 
@@ -144,7 +144,7 @@ impl MatchResult {
 /// ```
 /// use std::time::Duration;
 ///
-/// use instant_glicko_2::{Parameters, Rating};
+/// use instant_glicko_2::{Parameters, PublicRating};
 /// use instant_glicko_2::engine::{MatchResult, RatingEngine};
 ///
 /// let parameters = Parameters::default();
@@ -158,7 +158,7 @@ impl MatchResult {
 ///
 /// // Register two players
 /// // The first player is relatively strong
-/// let player_1_rating_old = Rating::new(1700.0, 300.0, 0.06);
+/// let player_1_rating_old = PublicRating::new(1700.0, 300.0, 0.06);
 /// let player_1 = engine.register_player(player_1_rating_old).0;
 /// // The second player hasn't played any games
 /// let player_2_rating_old = parameters.start_rating();
@@ -175,9 +175,9 @@ impl MatchResult {
 /// // Type signatures are needed because we could also work with the internal ScaledRating
 /// // That skips one step of calculation,
 /// // but the rating values are not as pretty and not comparable to the original Glicko ratings
-/// let player_1_rating_new: Rating = engine.player_rating(player_1).0;
+/// let player_1_rating_new: PublicRating = engine.player_rating(player_1).0;
 /// println!("Player 1 old rating: {player_1_rating_old:?}, new rating: {player_1_rating_new:?}");
-/// let player_2_rating_new: Rating = engine.player_rating(player_2).0;
+/// let player_2_rating_new: PublicRating = engine.player_rating(player_2).0;
 /// println!("Player 2 old rating: {player_2_rating_old:?}, new rating: {player_2_rating_new:?}");
 ///
 /// // Loser's rating goes down, winner's rating goes up
@@ -251,7 +251,7 @@ impl RatingEngine {
     #[must_use]
     pub fn last_rating_period_rating<R>(&self, player: PlayerHandle) -> R
     where
-        R: FromWithParameters<ScaledRating>,
+        R: FromWithParameters<InternalRating>,
     {
         self.managed_players
             .vec()
@@ -279,7 +279,7 @@ impl RatingEngine {
     // TODO: a way to register Right Now (so that the deviation is exactly the same at the now timestamp)
     pub fn register_player<R>(&mut self, rating: R) -> (PlayerHandle, u32)
     where
-        R: IntoWithParameters<ScaledRating>,
+        R: IntoWithParameters<InternalRating>,
     {
         self.register_player_at(rating, SystemTime::now())
     }
@@ -304,7 +304,7 @@ impl RatingEngine {
     /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
     pub fn register_player_at<R>(&mut self, rating: R, time: SystemTime) -> (PlayerHandle, u32)
     where
-        R: IntoWithParameters<ScaledRating>,
+        R: IntoWithParameters<InternalRating>,
     {
         let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
 
@@ -425,7 +425,7 @@ impl RatingEngine {
     #[must_use]
     pub fn player_rating<R>(&mut self, player: PlayerHandle) -> (R, u32)
     where
-        R: FromWithParameters<ScaledRating>,
+        R: FromWithParameters<InternalRating>,
     {
         self.player_rating_at(player, SystemTime::now())
     }
@@ -455,7 +455,7 @@ impl RatingEngine {
     #[must_use]
     pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: SystemTime) -> (R, u32)
     where
-        R: FromWithParameters<ScaledRating>,
+        R: FromWithParameters<InternalRating>,
     {
         let (elapsed_periods, closed_periods) = self.maybe_close_rating_periods_at(time);
 
@@ -568,7 +568,7 @@ mod test {
     use std::time::{Duration, SystemTime};
 
     use super::{MatchResult, RatingEngine};
-    use crate::{Parameters, Rating};
+    use crate::{Parameters, PublicRating};
 
     macro_rules! assert_approx_eq {
         ($a:expr, $b:expr, $tolerance:expr $(,)?) => {{
@@ -594,24 +594,24 @@ mod test {
         let mut engine = RatingEngine::start_new_at(Duration::from_secs(1), start_time, parameters);
 
         let player = engine
-            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_time)
+            .register_player_at(PublicRating::new(1500.0, 200.0, 0.06), start_time)
             .0;
 
         let opponent_a = engine
             .register_player_at(
-                Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+                PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
                 start_time,
             )
             .0;
         let opponent_b = engine
             .register_player_at(
-                Rating::new(1550.0, 100.0, parameters.start_rating().volatility()),
+                PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility()),
                 start_time,
             )
             .0;
         let opponent_c = engine
             .register_player_at(
-                Rating::new(1700.0, 300.0, parameters.start_rating().volatility()),
+                PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility()),
                 start_time,
             )
             .0;
@@ -622,7 +622,7 @@ mod test {
 
         let rating_period_end_time = start_time + Duration::from_secs(1);
 
-        let new_rating: Rating = engine.player_rating_at(player, rating_period_end_time).0;
+        let new_rating: PublicRating = engine.player_rating_at(player, rating_period_end_time).0;
 
         assert_approx_eq!(new_rating.rating(), 1464.06, 0.01);
         assert_approx_eq!(new_rating.deviation(), 151.52, 0.01);
@@ -639,12 +639,12 @@ mod test {
         let mut engine = RatingEngine::start_new_at(Duration::from_secs(1), start_time, parameters);
 
         let player = engine
-            .register_player_at(Rating::new(1500.0, 200.0, 0.06), start_time)
+            .register_player_at(PublicRating::new(1500.0, 200.0, 0.06), start_time)
             .0;
 
         let opponent = engine
             .register_player_at(
-                Rating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+                PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
                 start_time,
             )
             .0;
@@ -659,12 +659,12 @@ mod test {
         // Test that rating doesn't radically change across rating periods
         let right_before = start_time + (Duration::from_secs(1) - Duration::from_nanos(1));
         let (rating_right_before, closed_periods) =
-            engine.player_rating_at::<Rating>(player, right_before);
+            engine.player_rating_at::<PublicRating>(player, right_before);
         assert_eq!(closed_periods, 0);
 
         let right_after = start_time + (Duration::from_secs(1) + Duration::from_nanos(1));
         let (rating_right_after, closed_periods) =
-            engine.player_rating_at::<Rating>(player, right_after);
+            engine.player_rating_at::<PublicRating>(player, right_after);
         assert_eq!(closed_periods, 1);
 
         assert_approx_eq!(
@@ -701,8 +701,8 @@ mod test {
             .register_player_at(parameters.start_rating(), start_time)
             .0;
 
-        let rating_at_start: Rating = engine.player_rating_at(player, start_time).0;
-        let rating_after_year: Rating = engine
+        let rating_at_start: PublicRating = engine.player_rating_at(player, start_time).0;
+        let rating_after_year: PublicRating = engine
             .player_rating_at(player, start_time + Duration::from_secs(60 * 60 * 24 * 365))
             .0;
 

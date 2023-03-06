@@ -10,20 +10,20 @@
 //! Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using [`algorithm`]:
 //!
 //! ```
-//! use instant_glicko_2::{Parameters, Rating};
+//! use instant_glicko_2::{Parameters, PublicRating};
 //! use instant_glicko_2::algorithm::{self, PlayerResult};
 //!
 //! let parameters = Parameters::default().with_volatility_change(0.5);
 //!
 //! // Create our player's rating
-//! let mut player = Rating::new(1500.0, 200.0, 0.06);
+//! let mut player = PublicRating::new(1500.0, 200.0, 0.06);
 //!
 //! // Create our opponents
 //! // Their volatility is not specified in the paper and it doesn't matter in the calculation,
 //! // so we're just using the default starting volatility.
-//! let opponent_a = Rating::new(1400.0, 30.0, parameters.start_rating().volatility());
-//! let opponent_b = Rating::new(1550.0, 100.0, parameters.start_rating().volatility());
-//! let opponent_c = Rating::new(1700.0, 300.0, parameters.start_rating().volatility());
+//! let opponent_a = PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility());
+//! let opponent_b = PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility());
+//! let opponent_c = PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility());
 //!
 //! // Create match results for our player
 //! let results = [
@@ -49,7 +49,7 @@
 //! ```
 //! use std::time::Duration;
 //!
-//! use instant_glicko_2::{Parameters, Rating};
+//! use instant_glicko_2::{Parameters, PublicRating};
 //! use instant_glicko_2::engine::{MatchResult, RatingEngine};
 //!
 //! let parameters = Parameters::default();
@@ -63,7 +63,7 @@
 //!
 //! // Register two players
 //! // The first player is relatively strong
-//! let player_1_rating_old = Rating::new(1700.0, 300.0, 0.06);
+//! let player_1_rating_old = PublicRating::new(1700.0, 300.0, 0.06);
 //! let player_1 = engine.register_player(player_1_rating_old).0;
 //! // The second player hasn't played any games
 //! let player_2_rating_old = parameters.start_rating();
@@ -80,9 +80,9 @@
 //! // Type signatures are needed because we could also work with the internal ScaledRating
 //! // That skips one step of calculation,
 //! // but the rating values are not as pretty and not comparable to the original Glicko ratings
-//! let player_1_rating_new: Rating = engine.player_rating(player_1).0;
+//! let player_1_rating_new: PublicRating = engine.player_rating(player_1).0;
 //! println!("Player 1 old rating: {player_1_rating_old:?}, new rating: {player_1_rating_new:?}");
-//! let player_2_rating_new: Rating = engine.player_rating(player_2).0;
+//! let player_2_rating_new: PublicRating = engine.player_rating(player_2).0;
 //! println!("Player 2 old rating: {player_2_rating_old:?}, new rating: {player_2_rating_new:?}");
 //!
 //! // Loser's rating goes down, winner's rating goes up
@@ -160,24 +160,24 @@ where
 /// A Glicko-2 skill rating.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Rating {
+pub struct PublicRating {
     rating: f64,
     deviation: f64,
     volatility: f64,
 }
 
-impl FromWithParameters<ScaledRating> for Rating {
-    fn from_with_parameters(scaled: ScaledRating, parameters: Parameters) -> Self {
+impl FromWithParameters<InternalRating> for PublicRating {
+    fn from_with_parameters(scaled: InternalRating, parameters: Parameters) -> Self {
         let public_rating =
             scaled.rating() * RATING_SCALING_RATIO + parameters.start_rating().rating();
         let public_deviation = scaled.deviation() * RATING_SCALING_RATIO;
 
-        Rating::new(public_rating, public_deviation, scaled.volatility())
+        PublicRating::new(public_rating, public_deviation, scaled.volatility())
     }
 }
 
-impl Rating {
-    /// Creates a new [`Rating`] with the specified parameters.
+impl PublicRating {
+    /// Creates a new [`PublicRating`] with the specified parameters.
     ///  
     /// # Panics
     ///
@@ -187,7 +187,7 @@ impl Rating {
         assert!(deviation > 0.0, "deviation <= 0: {deviation}");
         assert!(volatility > 0.0, "volatility <= 0: {volatility}");
 
-        Rating {
+        PublicRating {
             rating,
             deviation,
             volatility,
@@ -217,24 +217,24 @@ impl Rating {
 /// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ScaledRating {
+pub struct InternalRating {
     rating: f64,
     deviation: f64,
     volatility: f64,
 }
 
-impl FromWithParameters<Rating> for ScaledRating {
-    fn from_with_parameters(rating: Rating, parameters: Parameters) -> Self {
+impl FromWithParameters<PublicRating> for InternalRating {
+    fn from_with_parameters(rating: PublicRating, parameters: Parameters) -> Self {
         let scaled_rating =
             (rating.rating() - parameters.start_rating().rating()) / RATING_SCALING_RATIO;
         let scaled_deviation = rating.deviation() / RATING_SCALING_RATIO;
 
-        ScaledRating::new(scaled_rating, scaled_deviation, rating.volatility())
+        InternalRating::new(scaled_rating, scaled_deviation, rating.volatility())
     }
 }
 
-impl ScaledRating {
-    /// Creates a new [`ScaledRating`] with the specified parameters.
+impl InternalRating {
+    /// Creates a new [`InternalRating`] with the specified parameters.
     ///
     /// # Panics
     ///
@@ -244,7 +244,7 @@ impl ScaledRating {
         assert!(deviation > 0.0, "deviation <= 0: {deviation}");
         assert!(volatility > 0.0, "volatility <= 0: {volatility}");
 
-        ScaledRating {
+        InternalRating {
             rating,
             deviation,
             volatility,
@@ -274,7 +274,7 @@ impl ScaledRating {
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Parameters {
-    start_rating: Rating,
+    start_rating: PublicRating,
     volatility_change: f64,
     convergence_tolerance: f64,
 }
@@ -297,7 +297,11 @@ impl Parameters {
     ///
     /// This function panics if `convergence_tolerance <= 0.0`.
     #[must_use]
-    pub fn new(start_rating: Rating, volatility_change: f64, convergence_tolerance: f64) -> Self {
+    pub fn new(
+        start_rating: PublicRating,
+        volatility_change: f64,
+        convergence_tolerance: f64,
+    ) -> Self {
         assert!(
             convergence_tolerance > 0.0,
             "convergence_tolerance <= 0: {convergence_tolerance}"
@@ -323,7 +327,7 @@ impl Parameters {
     ///
     /// See also [`constants::DEFAULT_START_RATING`].
     #[must_use]
-    pub fn start_rating(&self) -> Rating {
+    pub fn start_rating(&self) -> PublicRating {
         self.start_rating
     }
 

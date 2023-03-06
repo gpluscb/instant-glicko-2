@@ -3,7 +3,9 @@
 use std::borrow::Borrow;
 use std::f64::consts::PI;
 
-use crate::{constants, FromWithParameters, IntoWithParameters, Parameters, Rating, ScaledRating};
+use crate::{
+    constants, FromWithParameters, InternalRating, IntoWithParameters, Parameters, PublicRating,
+};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -15,7 +17,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PlayerResult {
-    opponent: Rating,
+    opponent: PublicRating,
     score: f64,
 }
 
@@ -55,13 +57,13 @@ impl FromWithParameters<Vec<ScaledPlayerResult>> for Vec<PlayerResult> {
 impl PlayerResult {
     /// Creates a new [`PlayerResult`] with the given `opponent` and and the player's `score`.
     #[must_use]
-    pub fn new(opponent: Rating, score: f64) -> Self {
+    pub fn new(opponent: PublicRating, score: f64) -> Self {
         PlayerResult { opponent, score }
     }
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> Rating {
+    pub fn opponent(&self) -> PublicRating {
         self.opponent
     }
 
@@ -80,7 +82,7 @@ impl PlayerResult {
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ScaledPlayerResult {
-    opponent: ScaledRating,
+    opponent: InternalRating,
     score: f64,
 }
 
@@ -120,13 +122,13 @@ impl FromWithParameters<Vec<PlayerResult>> for Vec<ScaledPlayerResult> {
 impl ScaledPlayerResult {
     /// Creates a new [`ScaledPlayerResult`] with the given `opponent` and and the player's `score`.
     #[must_use]
-    pub fn new(opponent: ScaledRating, score: f64) -> Self {
+    pub fn new(opponent: InternalRating, score: f64) -> Self {
         ScaledPlayerResult { opponent, score }
     }
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> ScaledRating {
+    pub fn opponent(&self) -> InternalRating {
         self.opponent
     }
 
@@ -147,7 +149,7 @@ impl ScaledPlayerResult {
 ///
 /// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 pub fn close_player_rating_period(
-    player_rating: &mut Rating,
+    player_rating: &mut PublicRating,
     results: &[PlayerResult],
     parameters: Parameters,
 ) {
@@ -164,7 +166,7 @@ pub fn close_player_rating_period(
 ///
 /// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 pub fn close_player_rating_period_scaled(
-    player_rating: &mut ScaledRating,
+    player_rating: &mut InternalRating,
     results: &[ScaledPlayerResult],
     parameters: Parameters,
 ) {
@@ -189,7 +191,7 @@ pub fn generic_close_player_rating_period<Rating, Results, ResultsSlice>(
     results: Results,
     parameters: Parameters,
 ) where
-    Rating: IntoWithParameters<ScaledRating> + FromWithParameters<ScaledRating> + Copy,
+    Rating: IntoWithParameters<InternalRating> + FromWithParameters<InternalRating> + Copy,
     Results: IntoWithParameters<ResultsSlice>,
     ResultsSlice: Borrow<[ScaledPlayerResult]>,
 {
@@ -207,11 +209,11 @@ pub fn generic_close_player_rating_period<Rating, Results, ResultsSlice>(
 /// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_player(
-    player_rating: Rating,
+    player_rating: PublicRating,
     results: &[PlayerResult],
     elapsed_periods: f64,
     parameters: Parameters,
-) -> Rating {
+) -> PublicRating {
     generic_rate_player::<_, _, _, Box<_>>(player_rating, results, elapsed_periods, parameters)
 }
 
@@ -226,11 +228,11 @@ pub fn rate_player(
 /// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_player_scaled(
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     results: &[ScaledPlayerResult],
     elapsed_periods: f64,
     parameters: Parameters,
-) -> ScaledRating {
+) -> InternalRating {
     generic_rate_player::<_, _, _, &_>(player_rating, results, elapsed_periods, parameters)
 }
 
@@ -256,8 +258,8 @@ pub fn generic_rate_player<Rating, Return, Results, ScaledResults>(
     parameters: Parameters,
 ) -> Return
 where
-    Rating: IntoWithParameters<ScaledRating>,
-    Return: FromWithParameters<ScaledRating>,
+    Rating: IntoWithParameters<InternalRating>,
+    Return: FromWithParameters<InternalRating>,
     Results: IntoWithParameters<ScaledResults>,
     ScaledResults: Borrow<[ScaledPlayerResult]>,
 {
@@ -275,7 +277,7 @@ where
             elapsed_periods,
         );
 
-        return ScaledRating::new(
+        return InternalRating::new(
             player_rating.rating(),
             new_deviation,
             player_rating.volatility(),
@@ -308,7 +310,7 @@ where
     let new_rating = calculate_new_rating(new_deviation, player_rating, results.iter().copied());
 
     // Maybe Step 8..
-    ScaledRating::new(new_rating, new_deviation, new_volatility).into_with_parameters(parameters)
+    InternalRating::new(new_rating, new_deviation, new_volatility).into_with_parameters(parameters)
 }
 
 /// Step 3.
@@ -316,7 +318,7 @@ where
 /// This function returns [`f64::NAN`] if the results iterator is empty.
 #[must_use]
 fn calculate_estimated_variance(
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     results: impl IntoIterator<Item = ScaledPlayerResult>,
 ) -> f64 {
     1.0 / results
@@ -336,7 +338,7 @@ fn calculate_estimated_variance(
 #[must_use]
 fn calculate_estimated_improvement(
     estimated_variance: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     results: impl IntoIterator<Item = ScaledPlayerResult>,
 ) -> f64 {
     estimated_variance
@@ -375,7 +377,7 @@ fn calculate_e(g: f64, player_rating: f64, opponent_rating: f64) -> f64 {
 fn calculate_new_volatility(
     estimated_improvement: f64,
     estimated_variance: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     parameters: Parameters,
 ) -> f64 {
     let deviation = player_rating.deviation();
@@ -469,7 +471,7 @@ fn calculate_new_volatility(
 #[must_use]
 fn calculate_pre_rating_period_value(
     new_volatility: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     elapsed_periods: f64,
 ) -> f64 {
     let current_deviation = player_rating.deviation();
@@ -492,7 +494,7 @@ fn calculate_new_rating_deviation(pre_rating_period_value: f64, estimated_varian
 #[must_use]
 fn calculate_new_rating(
     new_deviation: f64,
-    player_rating: ScaledRating,
+    player_rating: InternalRating,
     results: impl IntoIterator<Item = ScaledPlayerResult>,
 ) -> f64 {
     player_rating.rating()
@@ -513,7 +515,7 @@ fn calculate_new_rating(
 
 #[cfg(test)]
 mod test {
-    use crate::{IntoWithParameters, Parameters, Rating};
+    use crate::{IntoWithParameters, Parameters, PublicRating};
 
     use super::PlayerResult;
 
@@ -536,13 +538,13 @@ mod test {
     fn test_paper_example() {
         let parameters = Parameters::default().with_volatility_change(0.5);
 
-        let player = Rating::new(1500.0, 200.0, 0.06);
+        let player = PublicRating::new(1500.0, 200.0, 0.06);
 
         // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
         // Constructor asserts it to be > 0.0
-        let opponent_a = Rating::new(1400.0, 30.0, parameters.start_rating().volatility());
-        let opponent_b = Rating::new(1550.0, 100.0, parameters.start_rating().volatility());
-        let opponent_c = Rating::new(1700.0, 300.0, parameters.start_rating().volatility());
+        let opponent_a = PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility());
+        let opponent_b = PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility());
+        let opponent_c = PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility());
 
         let results = [
             PlayerResult::new(opponent_a, 1.0),
@@ -550,7 +552,7 @@ mod test {
             PlayerResult::new(opponent_c, 0.0),
         ];
 
-        let new_rating: Rating =
+        let new_rating: PublicRating =
             super::rate_player(player, &results, 1.0, parameters).into_with_parameters(parameters);
 
         assert_approx_eq!(new_rating.rating(), 1464.06, 0.01);
