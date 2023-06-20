@@ -372,6 +372,11 @@ impl TimedPublicGame {
         self.score
     }
 
+    #[must_use]
+    pub fn raw_public_game(&self) -> PublicGame {
+        PublicGame::new(self.opponent().raw_public_rating(), self.score())
+    }
+
     /// Converts this [`TimedPublicGame`] to a [`PublicGame`],
     /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
     ///
@@ -384,14 +389,21 @@ impl TimedPublicGame {
         parameters: Parameters,
         rating_period_duration: Duration,
     ) -> PublicGame {
-        let opponent =
-            self.opponent()
-                .public_rating_at(self.time, parameters, rating_period_duration);
+        self.public_game_at(self.time(), parameters, rating_period_duration)
+    }
 
-        PublicGame {
-            opponent,
-            score: self.score,
-        }
+    #[must_use]
+    pub fn public_game_at(
+        &self,
+        time: SystemTime,
+        parameters: Parameters,
+        rating_period_duration: Duration,
+    ) -> PublicGame {
+        let opponent = self
+            .opponent()
+            .public_rating_at(time, parameters, rating_period_duration);
+
+        PublicGame::new(opponent, self.score)
     }
 }
 
@@ -456,6 +468,11 @@ impl TimedInternalGame {
         self.score
     }
 
+    #[must_use]
+    pub fn raw_internal_game(&self) -> InternalGame {
+        InternalGame::new(self.opponent().raw_internal_rating(), self.score())
+    }
+
     /// Converts this [`TimedInternalGame`] to an [`InternalGame`],
     /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
     ///
@@ -464,14 +481,20 @@ impl TimedInternalGame {
     /// This function panics if the opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
     #[must_use]
     pub fn to_internal_game(&self, rating_period_duration: Duration) -> InternalGame {
+        self.internal_game_at(self.time(), rating_period_duration)
+    }
+
+    #[must_use]
+    pub fn internal_game_at(
+        &self,
+        time: SystemTime,
+        rating_period_duration: Duration,
+    ) -> InternalGame {
         let opponent = self
             .opponent()
-            .internal_rating_at(self.time, rating_period_duration);
+            .internal_rating_at(time, rating_period_duration);
 
-        InternalGame {
-            opponent,
-            score: self.score,
-        }
+        InternalGame::new(opponent, self.score)
     }
 }
 
@@ -623,10 +646,7 @@ impl TimedPublicGames {
     pub fn single(game: TimedPublicGame) -> Self {
         TimedPublicGames {
             time: game.time(),
-            games: vec![TimedOpponentPublicGame {
-                opponent: game.opponent(),
-                score: game.score(),
-            }],
+            games: vec![TimedOpponentPublicGame::new(game.opponent(), game.score())],
         }
     }
 
@@ -685,10 +705,10 @@ impl TimedInternalGames {
     pub fn single(game: TimedInternalGame) -> Self {
         TimedInternalGames {
             time: game.time(),
-            games: vec![TimedOpponentInternalGame {
-                opponent: game.opponent(),
-                score: game.score(),
-            }],
+            games: vec![TimedOpponentInternalGame::new(
+                game.opponent(),
+                game.score(),
+            )],
         }
     }
 
@@ -764,23 +784,19 @@ pub fn rate_games(
 
     let game_time = games.time();
 
-    // How many rating periods have elapsed
-    let elapsed_periods = game_time
-        .duration_since(player_rating.last_updated())
-        .expect("Game was played before last player update")
-        .as_secs_f64()
-        / rating_period_duration.as_secs_f64();
-
     // If `games` is empty, only Step 6. applies, which TimedInternalRating does automatically
     if games.games().is_empty() {
         return player_rating;
     }
 
-    // Find rating at the time the game was played
+    // Raw rating because pre_rating_period_value will handle that
     let player_rating = player_rating.internal_rating_at(game_time, rating_period_duration);
 
     let internal_games: Vec<_> = games
         .timed_games()
+        // Technically we should get internal game at time player_last_updated,
+        // but that would make all opponents being last updated before that a requirement,
+        // which is unreasonable. Errors because of this tend to be really small.
         .map(|game| game.to_internal_game(rating_period_duration))
         .collect();
 
@@ -805,8 +821,8 @@ pub fn rate_games(
     );
 
     // Step 6.
-    let pre_rating_period_value =
-        calculate_pre_rating_period_value(new_volatility, player_rating, elapsed_periods);
+    // We updated deviation to pre rating period value with internal_rating_at
+    let pre_rating_period_value = player_rating.deviation();
 
     // Step 7.
     let new_deviation = calculate_new_rating_deviation(pre_rating_period_value, estimated_variance);
@@ -1099,7 +1115,7 @@ mod test {
             TimedOpponentPublicGame::new(opponent_c, 0.0),
         ];
 
-        let games = TimedPublicGames::new(start_time, games);
+        let games = TimedPublicGames::new(end_time, games);
 
         let new_rating = rate_games(
             player.into_with_parameters(parameters),
@@ -1112,8 +1128,10 @@ mod test {
         let new_public_rating = TimedPublicRating::from_with_parameters(new_rating, parameters)
             .public_rating_at(end_time, parameters, rating_period_duration);
 
-        assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.01);
-        assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.01);
+        // However, we make an compromise for the opponent ratings to be able to be updated before the player ratings
+        // which makes the algorithm a bit less accurate, thus the slightly higher tolerances
+        assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.05);
+        assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.05);
         assert_approx_eq!(new_public_rating.volatility(), 0.05999, 0.0001);
     }
 }
