@@ -762,11 +762,6 @@ pub fn rate_games(
     // Step 1. (initialising) doesn't apply, we have already set the starting ratings.
     // Step 2. (converting to internal scale) doesn't apply either, we get typed checked internal rating here
 
-    // If `games` is empty, only Step 6. applies, which TimedInternalRating does automatically
-    if games.games().is_empty() {
-        return player_rating;
-    }
-
     let game_time = games.time();
 
     // How many rating periods have elapsed
@@ -775,6 +770,11 @@ pub fn rate_games(
         .expect("Game was played before last player update")
         .as_secs_f64()
         / rating_period_duration.as_secs_f64();
+
+    // If `games` is empty, only Step 6. applies, which TimedInternalRating does automatically
+    if games.games().is_empty() {
+        return player_rating;
+    }
 
     // Find rating at the time the game was played
     let player_rating = player_rating.internal_rating_at(game_time, rating_period_duration);
