@@ -88,7 +88,7 @@ engine.register_result(
 );
 
 // Print the new ratings
-// Type signatures are needed because we could also work with the internal ScaledRating
+// Type signatures are needed because we could also work with the internal InternalRating
 // That skips one step of calculation,
 // but the rating values are not as pretty and not comparable to the original Glicko ratings
 let player_1_rating_new: PublicRating = engine.player_rating(player_1).0;
