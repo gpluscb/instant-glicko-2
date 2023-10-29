@@ -269,6 +269,7 @@ impl InternalRating {
     }
 }
 
+// TODO: Should probably contain rating_period_duration
 /// The parameters used by the Glicko-2 algorithm.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
