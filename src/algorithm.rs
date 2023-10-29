@@ -822,8 +822,9 @@ pub fn rate_games_untimed(
     let estimated_variance = calculate_estimated_variance(player_rating, results.iter().copied());
 
     // Step 4.
+    let performance_sum = calculate_performance_sum(player_rating, results.iter().copied());
     let estimated_improvement =
-        calculate_estimated_improvement(estimated_variance, player_rating, results.iter().copied());
+        calculate_estimated_improvement(estimated_variance, performance_sum);
 
     // Step 5.
     let new_volatility = calculate_new_volatility(
@@ -840,8 +841,7 @@ pub fn rate_games_untimed(
 
     // Step 7.
     let new_deviation = calculate_new_rating_deviation(pre_rating_period_value, estimated_variance);
-
-    let new_rating = calculate_new_rating(new_deviation, player_rating, results.iter().copied());
+    let new_rating = calculate_new_rating(new_deviation, player_rating, performance_sum);
 
     // Step 8. (converting back to public) doesn't apply
     InternalRating::new(new_rating, new_deviation, new_volatility)
@@ -873,29 +873,32 @@ fn calculate_estimated_variance(
         .sum::<f64>()
 }
 
-/// Step 4.
-#[must_use]
-fn calculate_estimated_improvement(
-    estimated_variance: f64,
+/// Calculates sum value for Steps 4. and 7.2.
+fn calculate_performance_sum(
     player_rating: InternalRating,
     games: impl IntoIterator<Item = InternalGame>,
 ) -> f64 {
-    estimated_variance
-        * games
-            .into_iter()
-            .map(|game| {
-                let opponent_rating = game.opponent();
+    games
+        .into_iter()
+        .map(|game| {
+            let opponent_rating = game.opponent();
 
-                let g = calculate_g(opponent_rating.deviation());
-                let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
+            let g = calculate_g(opponent_rating.deviation());
+            let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
 
-                g * (game.score() - e)
-            })
-            .sum::<f64>()
+            g * (game.score() - e)
+        })
+        .sum::<f64>()
+}
+
+/// Step 4.
+#[must_use]
+fn calculate_estimated_improvement(estimated_variance: f64, performance_sum: f64) -> f64 {
+    estimated_variance * performance_sum
 }
 
 // TODO: cached?
-// Optimizer is prolly smart enough to notice we call it with the same value thrice
+// Optimizer is prolly smart enough to notice we call it with the same value twice
 // Even if not, like, ... this is likely not a bottleneck
 #[must_use]
 fn calculate_g(deviation: f64) -> f64 {
@@ -1028,27 +1031,14 @@ fn calculate_new_rating_deviation(pre_rating_period_value: f64, estimated_varian
     )
 }
 
-/// Step 7.2
+/// Step 7.2.
 #[must_use]
 fn calculate_new_rating(
     new_deviation: f64,
     player_rating: InternalRating,
-    games: impl IntoIterator<Item = InternalGame>,
+    performance_sum: f64,
 ) -> f64 {
-    player_rating.rating()
-        + new_deviation
-            * new_deviation
-            * games
-                .into_iter()
-                .map(|game| {
-                    let opponent_rating = game.opponent();
-
-                    let g = calculate_g(opponent_rating.deviation());
-                    let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
-
-                    g * (game.score() - e)
-                })
-                .sum::<f64>()
+    player_rating.rating() + new_deviation * new_deviation * performance_sum
 }
 
 #[cfg(test)]
