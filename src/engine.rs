@@ -216,13 +216,15 @@ impl RatingEngine {
     ///
     /// # Panics
     ///
-    /// This function panics if `start_time` is in the future.
+    /// This function panics if `start_time` is in the future or if `rating_period_duration` is zero.
     #[must_use]
     pub fn start_new_at(
         rating_period_duration: Duration,
         start_time: SystemTime,
         parameters: Parameters,
     ) -> Self {
+        assert!(!rating_period_duration.is_zero());
+
         RatingEngine {
             rating_period_duration,
             last_rating_period_start: start_time,
