@@ -1075,7 +1075,7 @@ fn calculate_new_rating(
 mod test {
     use std::time::{Duration, SystemTime};
 
-    use crate::algorithm2::{
+    use crate::algorithm::{
         rate_games, rate_games_untimed, PublicGame, TimedOpponentPublicGame, TimedPublicGames,
         TimedPublicRating,
     };
