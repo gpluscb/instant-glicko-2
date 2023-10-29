@@ -26,7 +26,7 @@ impl TimedPublicRating {
     /// Creates a new [`TimedPublicRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
     pub fn new(last_updated: SystemTime, rating: PublicRating) -> Self {
-        Self {
+        TimedPublicRating {
             last_updated,
             rating,
         }
@@ -100,10 +100,10 @@ impl TimedPublicRating {
 
 impl FromWithParameters<TimedInternalRating> for TimedPublicRating {
     fn from_with_parameters(internal: TimedInternalRating, parameters: Parameters) -> Self {
-        TimedPublicRating {
-            last_updated: internal.last_updated,
-            rating: internal.rating.into_with_parameters(parameters),
-        }
+        TimedPublicRating::new(
+            internal.last_updated,
+            internal.rating.into_with_parameters(parameters),
+        )
     }
 }
 
@@ -123,7 +123,7 @@ impl TimedInternalRating {
     /// Creates a new [`TimedInternalRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
     pub fn new(last_updated: SystemTime, rating: InternalRating) -> Self {
-        Self {
+        TimedInternalRating {
             last_updated,
             rating,
         }
@@ -189,10 +189,10 @@ impl TimedInternalRating {
 
 impl FromWithParameters<TimedPublicRating> for TimedInternalRating {
     fn from_with_parameters(public: TimedPublicRating, parameters: Parameters) -> Self {
-        TimedInternalRating {
-            last_updated: public.last_updated,
-            rating: public.rating.into_with_parameters(parameters),
-        }
+        TimedInternalRating::new(
+            public.last_updated,
+            public.rating.into_with_parameters(parameters),
+        )
     }
 }
 
@@ -219,7 +219,7 @@ impl PublicGame {
     pub fn new(opponent: PublicRating, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
-        Self { opponent, score }
+        PublicGame { opponent, score }
     }
 
     /// The opponent's rating.
@@ -252,10 +252,10 @@ impl PublicGame {
 
 impl FromWithParameters<InternalGame> for PublicGame {
     fn from_with_parameters(internal: InternalGame, parameters: Parameters) -> Self {
-        PublicGame {
-            opponent: internal.opponent.into_with_parameters(parameters),
-            score: internal.score,
-        }
+        PublicGame::new(
+            internal.opponent.into_with_parameters(parameters),
+            internal.score,
+        )
     }
 }
 
@@ -314,10 +314,10 @@ impl InternalGame {
 
 impl FromWithParameters<PublicGame> for InternalGame {
     fn from_with_parameters(public: PublicGame, parameters: Parameters) -> Self {
-        InternalGame {
-            opponent: public.opponent.into_with_parameters(parameters),
-            score: public.score,
-        }
+        InternalGame::new(
+            public.opponent.into_with_parameters(parameters),
+            public.score,
+        )
     }
 }
 
@@ -347,7 +347,7 @@ impl TimedPublicGame {
     pub fn new(time: SystemTime, opponent: TimedPublicRating, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
-        Self {
+        TimedPublicGame {
             time,
             opponent,
             score,
@@ -409,11 +409,11 @@ impl TimedPublicGame {
 
 impl FromWithParameters<TimedInternalGame> for TimedPublicGame {
     fn from_with_parameters(internal: TimedInternalGame, parameters: Parameters) -> Self {
-        TimedPublicGame {
-            time: internal.time,
-            opponent: internal.opponent.into_with_parameters(parameters),
-            score: internal.score,
-        }
+        TimedPublicGame::new(
+            internal.time,
+            internal.opponent.into_with_parameters(parameters),
+            internal.score,
+        )
     }
 }
 
@@ -443,7 +443,7 @@ impl TimedInternalGame {
     pub fn new(time: SystemTime, opponent: TimedInternalRating, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
-        Self {
+        TimedInternalGame {
             time,
             opponent,
             score,
@@ -500,11 +500,11 @@ impl TimedInternalGame {
 
 impl FromWithParameters<TimedPublicGame> for TimedInternalGame {
     fn from_with_parameters(public: TimedPublicGame, parameters: Parameters) -> Self {
-        TimedInternalGame {
-            time: public.time,
-            opponent: public.opponent.into_with_parameters(parameters),
-            score: public.score,
-        }
+        TimedInternalGame::new(
+            public.time,
+            public.opponent.into_with_parameters(parameters),
+            public.score,
+        )
     }
 }
 
@@ -535,11 +535,7 @@ impl TimedOpponentPublicGame {
 
     #[must_use]
     pub fn timed_public_game_at(&self, time: SystemTime) -> TimedPublicGame {
-        TimedPublicGame {
-            time,
-            opponent: self.opponent,
-            score: self.score,
-        }
+        TimedPublicGame::new(time, self.opponent, self.score)
     }
 
     #[must_use]
@@ -553,19 +549,16 @@ impl TimedOpponentPublicGame {
             .opponent
             .public_rating_at(time, parameters, rating_period_duration);
 
-        PublicGame {
-            opponent,
-            score: self.score,
-        }
+        PublicGame::new(opponent, self.score)
     }
 }
 
 impl FromWithParameters<TimedOpponentInternalGame> for TimedOpponentPublicGame {
     fn from_with_parameters(internal: TimedOpponentInternalGame, parameters: Parameters) -> Self {
-        TimedOpponentPublicGame {
-            opponent: internal.opponent.into_with_parameters(parameters),
-            score: internal.score,
-        }
+        TimedOpponentPublicGame::new(
+            internal.opponent.into_with_parameters(parameters),
+            internal.score,
+        )
     }
 }
 
@@ -596,11 +589,7 @@ impl TimedOpponentInternalGame {
 
     #[must_use]
     pub fn timed_internal_game_at(&self, time: SystemTime) -> TimedInternalGame {
-        TimedInternalGame {
-            time,
-            opponent: self.opponent,
-            score: self.score,
-        }
+        TimedInternalGame::new(time, self.opponent, self.score)
     }
 
     #[must_use]
@@ -613,19 +602,16 @@ impl TimedOpponentInternalGame {
             .opponent
             .internal_rating_at(time, rating_period_duration);
 
-        InternalGame {
-            opponent,
-            score: self.score,
-        }
+        InternalGame::new(opponent, self.score)
     }
 }
 
 impl FromWithParameters<TimedOpponentPublicGame> for TimedOpponentInternalGame {
     fn from_with_parameters(public: TimedOpponentPublicGame, parameters: Parameters) -> Self {
-        TimedOpponentInternalGame {
-            opponent: public.opponent.into_with_parameters(parameters),
-            score: public.score,
-        }
+        TimedOpponentInternalGame::new(
+            public.opponent.into_with_parameters(parameters),
+            public.score,
+        )
     }
 }
 
@@ -644,10 +630,10 @@ impl TimedPublicGames {
 
     #[must_use]
     pub fn single(game: TimedPublicGame) -> Self {
-        TimedPublicGames {
-            time: game.time(),
-            games: vec![TimedOpponentPublicGame::new(game.opponent(), game.score())],
-        }
+        TimedPublicGames::new(
+            game.time(),
+            vec![TimedOpponentPublicGame::new(game.opponent(), game.score())],
+        )
     }
 
     #[must_use]
@@ -681,10 +667,7 @@ impl FromWithParameters<TimedInternalGames> for TimedPublicGames {
             .map(|&game| game.into_with_parameters(parameters))
             .collect();
 
-        TimedPublicGames {
-            time: internal.time(),
-            games: public_games,
-        }
+        TimedPublicGames::new(internal.time(), public_games)
     }
 }
 
@@ -703,13 +686,13 @@ impl TimedInternalGames {
 
     #[must_use]
     pub fn single(game: TimedInternalGame) -> Self {
-        TimedInternalGames {
-            time: game.time(),
-            games: vec![TimedOpponentInternalGame::new(
+        TimedInternalGames::new(
+            game.time(),
+            vec![TimedOpponentInternalGame::new(
                 game.opponent(),
                 game.score(),
             )],
-        }
+        )
     }
 
     #[must_use]
@@ -743,10 +726,7 @@ impl FromWithParameters<TimedPublicGames> for TimedInternalGames {
             .map(|&game| game.into_with_parameters(parameters))
             .collect();
 
-        TimedInternalGames {
-            time: public.time(),
-            games: internal_games,
-        }
+        TimedInternalGames::new(public.time(), internal_games)
     }
 }
 

@@ -353,10 +353,10 @@ impl Parameters {
 impl Default for Parameters {
     /// Creates a default version of this struct with the parameters defined in [`constants`].
     fn default() -> Self {
-        Parameters {
-            start_rating: constants::DEFAULT_START_RATING,
-            volatility_change: constants::DEFAULT_VOLATILITY_CHANGE,
-            convergence_tolerance: constants::DEFAULT_CONVERGENCE_TOLERANCE,
-        }
+        Parameters::new(
+            constants::DEFAULT_START_RATING,
+            constants::DEFAULT_VOLATILITY_CHANGE,
+            constants::DEFAULT_CONVERGENCE_TOLERANCE,
+        )
     }
 }
