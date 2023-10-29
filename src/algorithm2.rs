@@ -796,20 +796,54 @@ pub fn rate_games(
         .timed_games()
         // Technically we should get internal game at time player_last_updated,
         // but that would make all opponents being last updated before that a requirement,
-        // which is unreasonable. Errors because of this tend to be really small.
+        // which is unreasonable. Errors because of this tend to be small.
         .map(|game| game.to_internal_game(rating_period_duration))
         .collect();
 
+    let new_rating = rate_games_untimed(player_rating, &internal_games, 0.0, parameters);
+
+    TimedInternalRating::new(
+        game_time,
+        InternalRating::new(
+            new_rating.rating(),
+            new_rating.deviation(),
+            new_rating.volatility(),
+        ),
+    )
+}
+
+#[must_use]
+pub fn rate_games_untimed(
+    player_rating: InternalRating,
+    results: &[InternalGame],
+    elapsed_periods: f64,
+    parameters: Parameters,
+) -> InternalRating {
+    // Step 1. (initialising) doesn't apply, we have already set the starting ratings.
+    // Step 2. (converting to internal scale) doesn't apply either, we get typed checked internal rating here
+
+    if results.iter().next().is_none() {
+        // If `results` is empty, only Step 6. applies
+        let new_deviation = calculate_pre_rating_period_value(
+            player_rating.volatility(),
+            player_rating,
+            elapsed_periods,
+        );
+
+        return InternalRating::new(
+            player_rating.rating(),
+            new_deviation,
+            player_rating.volatility(),
+        )
+        .into_with_parameters(parameters);
+    }
+
     // Step 3.
-    let estimated_variance =
-        calculate_estimated_variance(player_rating, internal_games.iter().copied());
+    let estimated_variance = calculate_estimated_variance(player_rating, results.iter().copied());
 
     // Step 4.
-    let estimated_improvement = calculate_estimated_improvement(
-        estimated_variance,
-        player_rating,
-        internal_games.iter().copied(),
-    );
+    let estimated_improvement =
+        calculate_estimated_improvement(estimated_variance, player_rating, results.iter().copied());
 
     // Step 5.
     let new_volatility = calculate_new_volatility(
@@ -821,23 +855,16 @@ pub fn rate_games(
     );
 
     // Step 6.
-    // We updated deviation to pre rating period value with internal_rating_at
-    let pre_rating_period_value = player_rating.deviation();
+    let pre_rating_period_value =
+        calculate_pre_rating_period_value(new_volatility, player_rating, elapsed_periods);
 
     // Step 7.
     let new_deviation = calculate_new_rating_deviation(pre_rating_period_value, estimated_variance);
 
-    let new_rating = calculate_new_rating(new_deviation, player_rating, internal_games);
+    let new_rating = calculate_new_rating(new_deviation, player_rating, results.iter().copied());
 
-    // Step 8. (converting to display scale) doesn't apply
-    TimedInternalRating {
-        last_updated: game_time,
-        rating: InternalRating {
-            rating: new_rating,
-            deviation: new_deviation,
-            volatility: new_volatility,
-        },
-    }
+    // Step 8. (converting back to public) doesn't apply
+    InternalRating::new(new_rating, new_deviation, new_volatility)
 }
 
 /// Step 3.
@@ -882,7 +909,7 @@ fn calculate_estimated_improvement(
                 let g = calculate_g(opponent_rating.deviation());
                 let e = calculate_e(g, player_rating.rating(), opponent_rating.rating());
 
-                g * (game.score - e)
+                g * (game.score() - e)
             })
             .sum::<f64>()
 }
@@ -1049,7 +1076,8 @@ mod test {
     use std::time::{Duration, SystemTime};
 
     use crate::algorithm2::{
-        rate_games, TimedOpponentPublicGame, TimedPublicGames, TimedPublicRating,
+        rate_games, rate_games_untimed, PublicGame, TimedOpponentPublicGame, TimedPublicGames,
+        TimedPublicRating,
     };
     use crate::{FromWithParameters, IntoWithParameters, Parameters, PublicRating};
 
@@ -1132,6 +1160,39 @@ mod test {
         // which makes the algorithm a bit less accurate, thus the slightly higher tolerances
         assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.05);
         assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.05);
+        assert_approx_eq!(new_public_rating.volatility(), 0.05999, 0.0001);
+    }
+
+    /// This tests the example calculation in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
+    #[test]
+    fn test_paper_example_untimed() {
+        let parameters = Parameters::default().with_volatility_change(0.5);
+
+        let player = PublicRating::new(1500.0, 200.0, 0.06);
+
+        // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
+        // Constructor asserts it to be > 0.0
+        let opponent_a = PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility());
+        let opponent_b = PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility());
+        let opponent_c = PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility());
+
+        let games = vec![
+            PublicGame::new(opponent_a, 1.0).into_with_parameters(parameters),
+            PublicGame::new(opponent_b, 0.0).into_with_parameters(parameters),
+            PublicGame::new(opponent_c, 0.0).into_with_parameters(parameters),
+        ];
+
+        let new_rating = rate_games_untimed(
+            player.into_with_parameters(parameters),
+            &games,
+            1.0,
+            parameters,
+        );
+
+        let new_public_rating = PublicRating::from_with_parameters(new_rating, parameters);
+
+        assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.01);
+        assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.01);
         assert_approx_eq!(new_public_rating.volatility(), 0.05999, 0.0001);
     }
 }
