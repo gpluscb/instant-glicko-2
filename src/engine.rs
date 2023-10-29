@@ -91,9 +91,12 @@ impl InternalEnginePlayer {
 pub trait Score {
     /// The player score.
     /// Should be between `0.0` (loss) and `1.0` (win).
+    #[must_use]
     fn player_score(&self) -> f64;
+
     /// The oppoent score.
     /// Should be between `0.0` (loss) and `1.0` (win).
+    #[must_use]
     fn opponent_score(&self) -> f64;
 }
 

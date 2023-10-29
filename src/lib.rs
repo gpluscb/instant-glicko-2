@@ -128,6 +128,7 @@ pub mod util;
 /// A blanket implementation [`FromWithParameters<T>`] for any `T` is provided.
 pub trait FromWithParameters<T: ?Sized> {
     /// Performs the conversion
+    #[must_use]
     fn from_with_parameters(_: T, parameters: Parameters) -> Self;
 }
 
