@@ -119,7 +119,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod algorithm;
 pub mod constants;
-//pub mod engine;
+pub mod engine;
 pub mod util;
 
 /// Trait to convert between two types with [`Parameters`].

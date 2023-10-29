@@ -2,7 +2,7 @@
 
 use std::time::{Duration, SystemTime};
 
-use crate::algorithm::{self, PlayerResult, ScaledPlayerResult};
+use crate::algorithm::{self, InternalGame, PublicGame};
 use crate::util::PushOnlyVec;
 use crate::{FromWithParameters, InternalRating, IntoWithParameters, Parameters, PublicRating};
 
@@ -19,12 +19,12 @@ pub struct PlayerHandle(usize);
 // TODO: Should this be public or even exist?
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Player {
+pub struct PublicEnginePlayer {
     rating: PublicRating,
-    current_rating_period_results: Vec<PlayerResult>,
+    current_rating_period_results: Vec<PublicGame>,
 }
 
-impl Player {
+impl PublicEnginePlayer {
     /// The rating of this player at the start of the current rating period.
     #[must_use]
     pub fn rating(&self) -> PublicRating {
@@ -33,18 +33,20 @@ impl Player {
 
     /// The match results the player had in the current rating period.
     #[must_use]
-    pub fn current_rating_period_results(&self) -> &[PlayerResult] {
+    pub fn current_rating_period_results(&self) -> &[PublicGame] {
         &self.current_rating_period_results
     }
 }
 
-impl FromWithParameters<ScaledEnginePlayer> for Player {
-    fn from_with_parameters(scaled: ScaledEnginePlayer, parameters: Parameters) -> Self {
-        Player {
+impl FromWithParameters<InternalEnginePlayer> for PublicEnginePlayer {
+    fn from_with_parameters(scaled: InternalEnginePlayer, parameters: Parameters) -> Self {
+        PublicEnginePlayer {
             rating: scaled.rating.into_with_parameters(parameters),
             current_rating_period_results: scaled
                 .current_rating_period_results
-                .into_with_parameters(parameters),
+                .into_iter()
+                .map(|game| game.into_with_parameters(parameters))
+                .collect(),
         }
     }
 }
@@ -53,23 +55,25 @@ impl FromWithParameters<ScaledEnginePlayer> for Player {
 /// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ScaledEnginePlayer {
+pub struct InternalEnginePlayer {
     rating: InternalRating,
-    current_rating_period_results: Vec<ScaledPlayerResult>,
+    current_rating_period_results: Vec<InternalGame>,
 }
 
-impl FromWithParameters<Player> for ScaledEnginePlayer {
-    fn from_with_parameters(player: Player, parameters: Parameters) -> Self {
-        ScaledEnginePlayer {
+impl FromWithParameters<PublicEnginePlayer> for InternalEnginePlayer {
+    fn from_with_parameters(player: PublicEnginePlayer, parameters: Parameters) -> Self {
+        InternalEnginePlayer {
             rating: player.rating.into_with_parameters(parameters),
             current_rating_period_results: player
                 .current_rating_period_results
-                .into_with_parameters(parameters),
+                .into_iter()
+                .map(|game| game.into_with_parameters(parameters))
+                .collect(),
         }
     }
 }
 
-impl ScaledEnginePlayer {
+impl InternalEnginePlayer {
     /// The rating of this player at the start of the current rating period.
     #[must_use]
     pub fn rating(&self) -> InternalRating {
@@ -78,7 +82,7 @@ impl ScaledEnginePlayer {
 
     /// The match results the player had in the current rating period.
     #[must_use]
-    pub fn current_rating_period_results(&self) -> &[ScaledPlayerResult] {
+    pub fn current_rating_period_results(&self) -> &[InternalGame] {
         &self.current_rating_period_results
     }
 }
@@ -184,7 +188,6 @@ impl MatchResult {
 /// assert!(player_1_rating_old.rating() > player_1_rating_new.rating());
 /// assert!(player_2_rating_old.rating() < player_2_rating_new.rating());
 /// ```
-
 // In this case, just engine::Rating does not tell enough about the purpose of the struct in my opinion.
 #[allow(clippy::module_name_repetitions)]
 #[derive(Clone, PartialEq, Debug)]
@@ -193,7 +196,7 @@ pub struct RatingEngine {
     rating_period_duration: Duration,
     last_rating_period_start: SystemTime,
     // This should be a PushOnlyVec because we hand out index references.
-    managed_players: PushOnlyVec<ScaledEnginePlayer>,
+    managed_players: PushOnlyVec<InternalEnginePlayer>,
     parameters: Parameters,
 }
 
@@ -312,7 +315,7 @@ impl RatingEngine {
 
         let index = self.managed_players.vec().len();
 
-        self.managed_players.push(ScaledEnginePlayer {
+        self.managed_players.push(InternalEnginePlayer {
             rating,
             current_rating_period_results: Vec::new(),
         });
@@ -389,19 +392,13 @@ impl RatingEngine {
             .get_mut(player_1.0)
             .unwrap()
             .current_rating_period_results
-            .push(ScaledPlayerResult::new(
-                player_2_rating,
-                score.player_score(),
-            ));
+            .push(InternalGame::new(player_2_rating, score.player_score()));
 
         self.managed_players
             .get_mut(player_2.0)
             .unwrap()
             .current_rating_period_results
-            .push(ScaledPlayerResult::new(
-                player_1_rating,
-                score.opponent_score(),
-            ));
+            .push(InternalGame::new(player_1_rating, score.opponent_score()));
 
         closed_periods
     }
@@ -465,7 +462,7 @@ impl RatingEngine {
             .get(player.0)
             .expect("Player didn't belong to this RatingEngine");
 
-        let rating = algorithm::rate_player_scaled(
+        let rating = algorithm::rate_games_untimed(
             player.rating,
             &player.current_rating_period_results,
             elapsed_periods,
@@ -526,9 +523,10 @@ impl RatingEngine {
         // This is guaranteed because we call this method before every time a new result gets added.
         for _ in 0..periods_to_close {
             for player in self.managed_players.iter_mut() {
-                algorithm::close_player_rating_period_scaled(
-                    &mut player.rating,
+                player.rating = algorithm::rate_games_untimed(
+                    player.rating,
                     &player.current_rating_period_results,
+                    1.0,
                     self.parameters,
                 );
 
