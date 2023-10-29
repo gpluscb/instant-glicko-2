@@ -10,8 +10,8 @@
 //! Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using [`algorithm`]:
 //!
 //! ```
-//! use instant_glicko_2::{Parameters, PublicRating};
-//! use instant_glicko_2::algorithm::{self, PlayerResult};
+//! use instant_glicko_2::{Parameters, PublicRating, IntoWithParameters};
+//! use instant_glicko_2::algorithm::{self, PublicGame};
 //!
 //! let parameters = Parameters::default().with_volatility_change(0.5);
 //!
@@ -28,20 +28,20 @@
 //! // Create match results for our player
 //! let results = [
 //!     // Wins first game (score 1.0)
-//!     PlayerResult::new(opponent_a, 1.0),
+//!     PublicGame::new(opponent_a, 1.0).into_with_parameters(parameters),
 //!     // Loses second game (score 0.0)
-//!     PlayerResult::new(opponent_b, 0.0),
+//!     PublicGame::new(opponent_b, 0.0).into_with_parameters(parameters),
 //!     // Loses third game (score 0.0)
-//!     PlayerResult::new(opponent_c, 0.0),
+//!     PublicGame::new(opponent_c, 0.0).into_with_parameters(parameters),
 //! ];
 //!
 //! // Update rating after rating period
-//! algorithm::close_player_rating_period(&mut player, &results, parameters);
+//! let new_rating: PublicRating = algorithm::rate_games_untimed(player.into_with_parameters(parameters), &results, 1.0, parameters).into_with_parameters(parameters);
 //!
 //! // The rating after the rating period are very close to the results from the paper
-//! assert!((player.rating() - 1464.06).abs() < 0.01);
-//! assert!((player.deviation() - 151.52).abs() < 0.01);
-//! assert!((player.volatility() - 0.05999).abs() < 0.0001);
+//! assert!((new_rating.rating() - 1464.06).abs() < 0.01);
+//! assert!((new_rating.deviation() - 151.52).abs() < 0.01);
+//! assert!((new_rating.volatility() - 0.05999).abs() < 0.0001);
 //! ```
 //!
 //! Different example using [`RatingEngine`][engine::RatingEngine]:
