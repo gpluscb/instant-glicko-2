@@ -13,7 +13,7 @@ Documentation for the crate can be found on [Docs.rs](https://docs.rs/instant-gl
 
 To use this as a dependency, add the following line to your `Cargo.toml` dependencies:
 ```toml
-instant-glicko-2 = "0.1.0"
+instant-glicko-2 = "0.2.0"
 ```
 
 # Examples
