@@ -2,6 +2,7 @@
 //! including defaults for [`model::Parameters`][crate::Parameters].
 
 use crate::PublicRating;
+use std::marker::PhantomData;
 
 /// Constant for converting between the original Glicko scale, and the internal Glicko-2 scale.
 ///
@@ -14,6 +15,7 @@ pub const DEFAULT_START_RATING: PublicRating = PublicRating {
     rating: 1500.0,
     deviation: 350.0,
     volatility: 0.06,
+    _scale: PhantomData,
 };
 /// Default system constant.
 /// This value is right in the middle of the reasonable range described by "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) (`0.3` to `1.2`),

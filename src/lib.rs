@@ -113,6 +113,9 @@
 // TODO: Lots of const fn
 
 use constants::RATING_SCALING_RATIO;
+use std::cmp::Ordering;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -122,24 +125,71 @@ pub mod constants;
 pub mod engine;
 pub mod util;
 
-/// Trait to convert between two types with [`Parameters`].
-/// Usually used to convert between the internal rating scaling and the public Glicko rating scaling.
+/// Marker type for the public scale of Glicko-2 ratings. See [`RatingScale`].
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug)]
+pub enum Public {}
+
+/// Marker type for the internal scale of Glicko-2 ratings. See [`RatingScale`].
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Debug)]
+pub enum Internal {}
+
+/// Marker trait for any rating scale.
+/// Rating scales are used to convert between different representations of ratings.
+/// All Glicko-2 calculations use the [`Internal`] rating scale,
+/// but it is recommended that these internal ratings are not displayed.
+/// Display [`Public`] ratings instead.
 ///
-/// A blanket implementation [`FromWithParameters<T>`] for any `T` is provided.
+/// You can convert between the scales [`FromWithParameters`] and [`IntoWithParameters`].
+/// The requirement for that is that [`ConvertToScale`] is implemented for the given scales,
+/// but this is the case for [`Public`] and [`Internal`].
+pub trait RatingScale: Eq + PartialEq + Ord + PartialOrd + Copy + Clone + Debug {}
+
+impl RatingScale for Public {}
+impl RatingScale for Internal {}
+
+/// A trait to define how [`Rating`]s are converted between different [`RatingScale`]s.
+pub trait ConvertToScale<S: RatingScale>: RatingScale {
+    /// Converts a rating of the [`Self`] scale to the new `S` scale.
+    #[must_use]
+    fn convert(rating: Rating<Self>, parameters: Parameters) -> Rating<S>;
+}
+
+impl<S: RatingScale> ConvertToScale<S> for S {
+    fn convert(rating: Rating<Self>, _parameters: Parameters) -> Rating<S> {
+        rating
+    }
+}
+
+impl ConvertToScale<Public> for Internal {
+    fn convert(internal: Rating<Self>, parameters: Parameters) -> Rating<Public> {
+        let public_rating =
+            internal.rating() * RATING_SCALING_RATIO + parameters.start_rating().rating();
+        let public_deviation = internal.deviation() * RATING_SCALING_RATIO;
+
+        Rating::new(public_rating, public_deviation, internal.volatility())
+    }
+}
+
+impl ConvertToScale<Internal> for Public {
+    fn convert(public: Rating<Self>, parameters: Parameters) -> Rating<Internal> {
+        let internal_rating =
+            (public.rating() - parameters.start_rating().rating()) / RATING_SCALING_RATIO;
+        let internal_deviation = public.deviation() / RATING_SCALING_RATIO;
+
+        InternalRating::new(internal_rating, internal_deviation, public.volatility())
+    }
+}
+
+/// Trait to convert between two types with [`Parameters`].
+/// Usually used to convert between the [`Internal`] and [`Public`] Glicko-2 rating scales.
 pub trait FromWithParameters<T: ?Sized> {
     /// Performs the conversion
     #[must_use]
     fn from_with_parameters(_: T, parameters: Parameters) -> Self;
 }
 
-impl<T> FromWithParameters<T> for T {
-    fn from_with_parameters(t: T, _: Parameters) -> Self {
-        t
-    }
-}
-
 /// Trait to convert between two types with [`Parameters`].
-/// Usually used to convert between the internal rating scaling and the public Glicko rating scaling.
+/// Usually used to convert between the [`Internal`] the [`Public`] Glicko-2 rating scales.
 ///
 /// This trait is automatically provided for any type `T` where [`FromWithParameters<T>`] is implemented.
 pub trait IntoWithParameters<T> {
@@ -157,26 +207,43 @@ where
 }
 
 /// A Glicko-2 skill rating.
-#[derive(Clone, Copy, PartialEq, Debug)]
+///
+/// If `Scale` is [`Internal`], this is scaled to the internal rating scale.
+/// If `Scale` is [`Public`], this is scaled to the public rating scale (so that it can be displayed).
+#[derive(Copy, Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicRating {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "", serialize = "")))]
+pub struct Rating<Scale: RatingScale> {
     rating: f64,
     deviation: f64,
     volatility: f64,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    _scale: PhantomData<Scale>,
 }
 
-impl FromWithParameters<InternalRating> for PublicRating {
-    fn from_with_parameters(scaled: InternalRating, parameters: Parameters) -> Self {
-        let public_rating =
-            scaled.rating() * RATING_SCALING_RATIO + parameters.start_rating().rating();
-        let public_deviation = scaled.deviation() * RATING_SCALING_RATIO;
+/// A Glicko-2 rating of [`Public`] scale. See [`Rating`].
+pub type PublicRating = Rating<Public>;
 
-        PublicRating::new(public_rating, public_deviation, scaled.volatility())
+/// A Glicko-2 rating of [`Internal`] scale. See [`Rating`].
+pub type InternalRating = Rating<Internal>;
+
+impl<Scale: RatingScale> PartialOrd for Rating<Scale> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.rating.partial_cmp(&other.rating)
     }
 }
 
-impl PublicRating {
-    /// Creates a new [`PublicRating`] with the specified parameters.
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<Rating<Scale1>> for Rating<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_parameters(rating: Rating<Scale1>, parameters: Parameters) -> Self {
+        ConvertToScale::convert(rating, parameters)
+    }
+}
+
+impl<Scale: RatingScale> Rating<Scale> {
+    /// Creates a new [`Rating`] with the specified parameters.
     ///  
     /// # Panics
     ///
@@ -186,67 +253,11 @@ impl PublicRating {
         assert!(deviation > 0.0, "deviation <= 0: {deviation}");
         assert!(volatility > 0.0, "volatility <= 0: {volatility}");
 
-        PublicRating {
+        Rating {
             rating,
             deviation,
             volatility,
-        }
-    }
-
-    /// The rating value.
-    #[must_use]
-    pub fn rating(&self) -> f64 {
-        self.rating
-    }
-
-    /// The rating deviation.
-    #[must_use]
-    pub fn deviation(&self) -> f64 {
-        self.deviation
-    }
-
-    /// The rating volatility.
-    #[must_use]
-    pub fn volatility(&self) -> f64 {
-        self.volatility
-    }
-}
-
-/// A Glicko-2 rating scaled to the internal rating scale.
-/// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InternalRating {
-    rating: f64,
-    deviation: f64,
-    volatility: f64,
-}
-
-impl FromWithParameters<PublicRating> for InternalRating {
-    fn from_with_parameters(rating: PublicRating, parameters: Parameters) -> Self {
-        let scaled_rating =
-            (rating.rating() - parameters.start_rating().rating()) / RATING_SCALING_RATIO;
-        let scaled_deviation = rating.deviation() / RATING_SCALING_RATIO;
-
-        InternalRating::new(scaled_rating, scaled_deviation, rating.volatility())
-    }
-}
-
-impl InternalRating {
-    /// Creates a new [`InternalRating`] with the specified parameters.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `deviation` or `volatility <= 0.0`.
-    #[must_use]
-    pub fn new(rating: f64, deviation: f64, volatility: f64) -> Self {
-        assert!(deviation > 0.0, "deviation <= 0: {deviation}");
-        assert!(volatility > 0.0, "volatility <= 0: {volatility}");
-
-        InternalRating {
-            rating,
-            deviation,
-            volatility,
+            _scale: PhantomData,
         }
     }
 

@@ -1,32 +1,45 @@
 //! This module hosts the methods and types necessary to perform Glicko-2 calculations with fractional rating periods.
 
+use std::cmp::Ordering;
 use std::f64::consts::PI;
 use std::time::{Duration, SystemTime};
 
 use crate::{
-    constants, FromWithParameters, InternalRating, IntoWithParameters, Parameters, PublicRating,
+    constants, ConvertToScale, FromWithParameters, Internal, InternalRating, IntoWithParameters,
+    Parameters, Public, Rating, RatingScale,
 };
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// A rating at a specific point in time.
-/// This is a *public* rating, meaning it is meant to be displayed to users,
-/// but it needs to be converted to an internal rating before use in rating calculations.
 ///
 /// The timing of the rating is important because the deviation increases over the time no games are recorded.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedPublicRating {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "", serialize = "")))]
+pub struct TimedRating<Scale: RatingScale> {
     last_updated: SystemTime,
-    rating: PublicRating,
+    rating: Rating<Scale>,
 }
 
-impl TimedPublicRating {
-    /// Creates a new [`TimedPublicRating`] at the given `last_updated` time with the given `rating`.
+/// A [`TimedRating`] of [`Public`] scale.
+pub type PublicTimedRating = TimedRating<Public>;
+
+/// A [`TimedRating`] of [`Internal`] scale.
+pub type InternalTimedRating = TimedRating<Internal>;
+
+impl<Scale: RatingScale> PartialOrd for TimedRating<Scale> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.rating.partial_cmp(&other.rating)
+    }
+}
+
+impl<Scale: RatingScale> TimedRating<Scale> {
+    /// Creates a new [`TimedRating`] at the given `last_updated` time with the given `rating`.
     #[must_use]
-    pub fn new(last_updated: SystemTime, rating: PublicRating) -> Self {
-        TimedPublicRating {
+    pub fn new(last_updated: SystemTime, rating: Rating<Scale>) -> Self {
+        TimedRating {
             last_updated,
             rating,
         }
@@ -40,23 +53,27 @@ impl TimedPublicRating {
 
     /// The rating at the time it was last updated.
     #[must_use]
-    pub fn raw_public_rating(&self) -> PublicRating {
+    pub fn raw_rating(&self) -> Rating<Scale> {
         self.rating
     }
 
     /// The rating with the deviation updated to the current time after no games were played since the last update.
-    /// Convenience for `self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)`.
+    /// Convenience for `self.rating_at(SystemTime::now(), parameters, rating_period_duration)`.
     ///
     /// # Panics
     ///
     /// This function panics if `last_updated` is in the future, or if the `rating_period_duration` is zero.
     #[must_use]
-    pub fn public_rating_now(
+    pub fn rating_now(
         &self,
         parameters: Parameters,
         rating_period_duration: Duration,
-    ) -> PublicRating {
-        self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)
+    ) -> Rating<Scale>
+    where
+        Scale: ConvertToScale<Internal>,
+        Internal: ConvertToScale<Scale>,
+    {
+        self.rating_at(SystemTime::now(), parameters, rating_period_duration)
     }
 
     /// The rating with the deviation updated to the given time after no games were played since the last update.
@@ -65,12 +82,16 @@ impl TimedPublicRating {
     ///
     /// This function panics if `last_updated` is after `time`, or if the `rating_period_duration` is zero.
     #[must_use]
-    pub fn public_rating_at(
+    pub fn rating_at(
         &self,
         time: SystemTime,
         parameters: Parameters,
         rating_period_duration: Duration,
-    ) -> PublicRating {
+    ) -> Rating<Scale>
+    where
+        Scale: ConvertToScale<Internal>,
+        Internal: ConvertToScale<Scale>,
+    {
         let internal_rating: InternalRating = self.rating.into_with_parameters(parameters);
 
         let new_deviation = calculate_pre_rating_period_value(
@@ -98,100 +119,15 @@ impl TimedPublicRating {
     }
 }
 
-impl FromWithParameters<TimedInternalRating> for TimedPublicRating {
-    fn from_with_parameters(internal: TimedInternalRating, parameters: Parameters) -> Self {
-        TimedPublicRating::new(
-            internal.last_updated,
-            internal.rating.into_with_parameters(parameters),
-        )
-    }
-}
-
-/// A rating at a specific point in time.
-/// This is an *internal* rating, meaning it can be used immediately in rating calculations,
-/// but should be converted to a public rating before displaying to users.
-///
-/// The timing of the rating is important because the deviation increases over the time no games are recorded.
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedInternalRating {
-    last_updated: SystemTime,
-    rating: InternalRating,
-}
-
-impl TimedInternalRating {
-    /// Creates a new [`TimedInternalRating`] at the given `last_updated` time with the given `rating`.
-    #[must_use]
-    pub fn new(last_updated: SystemTime, rating: InternalRating) -> Self {
-        TimedInternalRating {
-            last_updated,
-            rating,
-        }
-    }
-
-    /// The time this rating was last updated.
-    #[must_use]
-    pub fn last_updated(&self) -> SystemTime {
-        self.last_updated
-    }
-
-    /// The rating at the time it was last updated.
-    #[must_use]
-    pub fn raw_internal_rating(&self) -> InternalRating {
-        self.rating
-    }
-
-    /// The rating with the deviation updated to the current time after no games were played since the last update.
-    /// Convenience for `self.public_rating_at(SystemTime::now(), parameters, rating_period_duration)`.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `last_updated` is in the future, or if the `rating_period_duration` is zero.
-    #[must_use]
-    pub fn internal_rating_now(&self, rating_period_duration: Duration) -> InternalRating {
-        self.internal_rating_at(SystemTime::now(), rating_period_duration)
-    }
-
-    /// The rating with the deviation updated to the given time after no games were played since the last update.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `last_updated` is after `time`, or if the `rating_period_duration` is zero.
-    #[must_use]
-    pub fn internal_rating_at(
-        &self,
-        time: SystemTime,
-        rating_period_duration: Duration,
-    ) -> InternalRating {
-        let new_deviation = calculate_pre_rating_period_value(
-            self.rating.volatility(),
-            self.rating,
-            self.elapsed_rating_periods(time, rating_period_duration),
-        );
-
-        InternalRating {
-            deviation: new_deviation,
-            ..self.rating
-        }
-    }
-
-    /// # Panics
-    ///
-    /// This function panics if `time` is **before** the last rating update, or if the `rating_period_duration` is zero.
-    #[must_use]
-    fn elapsed_rating_periods(&self, time: SystemTime, rating_period_duration: Duration) -> f64 {
-        time.duration_since(self.last_updated)
-            .expect("Player rating was updated after the game to rate")
-            .as_secs_f64()
-            / rating_period_duration.as_secs_f64()
-    }
-}
-
-impl FromWithParameters<TimedPublicRating> for TimedInternalRating {
-    fn from_with_parameters(public: TimedPublicRating, parameters: Parameters) -> Self {
-        TimedInternalRating::new(
-            public.last_updated,
-            public.rating.into_with_parameters(parameters),
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedRating<Scale1>>
+    for TimedRating<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_parameters(rating: TimedRating<Scale1>, parameters: Parameters) -> Self {
+        TimedRating::new(
+            rating.last_updated,
+            rating.rating.into_with_parameters(parameters),
         )
     }
 }
@@ -203,12 +139,18 @@ impl FromWithParameters<TimedPublicRating> for TimedInternalRating {
 /// This is because it is used in relation to registering games on and therefore update the player's rating struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicGame {
-    opponent: PublicRating,
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "", serialize = "")))]
+pub struct Game<Scale: RatingScale> {
+    opponent: Rating<Scale>,
     score: f64,
 }
 
-impl PublicGame {
+/// A [`Game`] of [`Public`] scale.
+pub type PublicGame = Game<Public>;
+/// A [`Game`] of [`Internal`] scale.
+pub type InternalGame = Game<Internal>;
+
+impl<Scale: RatingScale> Game<Scale> {
     /// Creates a new [`PublicGame`] with the given `opponent` and `score`.
     /// `score` is a number between 0.0 (decisive opponent win) and `1.0` (decisive player win).
     ///
@@ -216,15 +158,15 @@ impl PublicGame {
     ///
     /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(opponent: PublicRating, score: f64) -> Self {
+    pub fn new(opponent: Rating<Scale>, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
-        PublicGame { opponent, score }
+        Game { opponent, score }
     }
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> PublicRating {
+    pub fn opponent(&self) -> Rating<Scale> {
         self.opponent
     }
 
@@ -233,121 +175,51 @@ impl PublicGame {
     pub fn score(&self) -> f64 {
         self.score
     }
-
-    /// Converts a [`TimedPublicGame`] to a [`PublicGame`],
-    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `timed_game`'s opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
-    #[must_use]
-    pub fn from_timed_public_game(
-        timed_game: TimedPublicGame,
-        parameters: Parameters,
-        rating_period_duration: Duration,
-    ) -> Self {
-        timed_game.to_public_game(parameters, rating_period_duration)
-    }
 }
 
-impl FromWithParameters<InternalGame> for PublicGame {
-    fn from_with_parameters(internal: InternalGame, parameters: Parameters) -> Self {
-        PublicGame::new(
-            internal.opponent.into_with_parameters(parameters),
-            internal.score,
-        )
-    }
-}
-
-/// Game information encompassing the opponent's internal rating at the time of the game
-/// as well as the game score as a number between `0.0` (decisive opponent win) and `1.0` (decisive player win).
-///
-/// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
-/// This is because it is used in relation to registering games on and therefore update the player's rating struct.
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InternalGame {
-    opponent: InternalRating,
-    score: f64,
-}
-
-impl InternalGame {
-    /// Creates a new [`InternalGame`] with the given `opponent` and `score`.
-    /// `score` is a number between 0.0 (decisive opponent win) and `1.0` (decisive player win).
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
-    #[must_use]
-    pub fn new(opponent: InternalRating, score: f64) -> Self {
-        assert!((0.0..=1.0).contains(&score));
-
-        InternalGame { opponent, score }
-    }
-
-    /// The opponent's rating.
-    #[must_use]
-    pub fn opponent(&self) -> InternalRating {
-        self.opponent
-    }
-
-    /// The game score as a number between `0.0` (decisive opponent win) and `1.0` (decisive player win).
-    #[must_use]
-    pub fn score(&self) -> f64 {
-        self.score
-    }
-
-    /// Converts a [`TimedInternalGame`] to an [`InternalGame`],
-    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `timed_game`'s opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
-    #[must_use]
-    pub fn from_timed_internal_game(
-        timed_game: TimedInternalGame,
-        rating_period_duration: Duration,
-    ) -> Self {
-        timed_game.to_internal_game(rating_period_duration)
-    }
-}
-
-impl FromWithParameters<PublicGame> for InternalGame {
-    fn from_with_parameters(public: PublicGame, parameters: Parameters) -> Self {
-        InternalGame::new(
-            public.opponent.into_with_parameters(parameters),
-            public.score,
-        )
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<Game<Scale1>> for Game<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_parameters(game: Game<Scale1>, parameters: Parameters) -> Self {
+        Game::new(game.opponent.into_with_parameters(parameters), game.score)
     }
 }
 
 /// Game information encompassing
 /// - The time the game was recorded
-/// - The [`TimedPublicRating`] of the opponent
+/// - The [`TimedRating`] of the opponent
 /// - The score as a number between `0.0` (decisive opponent win) and `1.0` (decisive player win)
 ///
 /// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
 /// This is because it is used to register games on and therefore update the player's rating struct.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedPublicGame {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "", serialize = "")))]
+pub struct TimedGame<Scale: RatingScale> {
     time: SystemTime,
-    opponent: TimedPublicRating,
+    opponent: TimedRating<Scale>,
     score: f64,
 }
 
-impl TimedPublicGame {
-    /// Creates a new [`TimedPublicGame`] at the given `time` with the given `opponent` and `score`.
+/// A [`TimedGame`] of [`Public`] scale.
+pub type PublicTimedGame = TimedGame<Public>;
+
+/// A [`TimedGame`] of [`Internal`] scale.
+pub type InternalTimedGame = TimedGame<Internal>;
+
+impl<Scale: RatingScale> TimedGame<Scale> {
+    /// Creates a new [`TimedGame`] at the given `time` with the given `opponent` and `score`.
     /// `score` is a number between 0.0 (decisive opponent win) and `1.0` (decisive player win).
     ///
     /// # Panics
     ///
     /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(time: SystemTime, opponent: TimedPublicRating, score: f64) -> Self {
+    pub fn new(time: SystemTime, opponent: TimedRating<Scale>, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
-        TimedPublicGame {
+        TimedGame {
             time,
             opponent,
             score,
@@ -362,7 +234,7 @@ impl TimedPublicGame {
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> TimedPublicRating {
+    pub fn opponent(&self) -> TimedRating<Scale> {
         self.opponent
     }
 
@@ -375,182 +247,98 @@ impl TimedPublicGame {
     /// The game with timing information erased
     /// and the opponent's rating resolved to their rating at the time of the last update.
     #[must_use]
-    pub fn raw_public_game(&self) -> PublicGame {
-        PublicGame::new(self.opponent().raw_public_rating(), self.score())
+    pub fn raw_game(&self) -> Game<Scale> {
+        Game::new(self.opponent().raw_rating(), self.score())
     }
 
-    /// Converts this [`TimedPublicGame`] to a [`PublicGame`],
+    /// Converts this [`TimedGame`] to a [`Game`],
     /// erasing the timing information and resolving the opponent's rating to their rating at the time of the game.
     ///
     /// # Panics
     ///
     /// This function panics if the opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
     #[must_use]
-    pub fn to_public_game(
-        &self,
-        parameters: Parameters,
-        rating_period_duration: Duration,
-    ) -> PublicGame {
-        self.public_game_at(self.time(), parameters, rating_period_duration)
+    pub fn to_game(&self, parameters: Parameters, rating_period_duration: Duration) -> Game<Scale>
+    where
+        Scale: ConvertToScale<Internal>,
+        Internal: ConvertToScale<Scale>,
+    {
+        self.game_at(self.time(), parameters, rating_period_duration)
     }
 
-    /// Converts this [`TimedPublicGame`] to a [`PublicGame`],
+    /// Converts this [`TimedGame`] to a [`Game`],
     /// erasing the timing information and resolving the opponent's rating to their rating at the given `time`.
     ///
     /// # Panics
     ///
     /// This function panics if the given `time` is before the opponent rating's last update, or if `rating_period_duration` is zero.
     #[must_use]
-    pub fn public_game_at(
+    pub fn game_at(
         &self,
         time: SystemTime,
         parameters: Parameters,
         rating_period_duration: Duration,
-    ) -> PublicGame {
+    ) -> Game<Scale>
+    where
+        Scale: ConvertToScale<Internal>,
+        Internal: ConvertToScale<Scale>,
+    {
         let opponent = self
             .opponent()
-            .public_rating_at(time, parameters, rating_period_duration);
+            .rating_at(time, parameters, rating_period_duration);
 
-        PublicGame::new(opponent, self.score())
+        Game::new(opponent, self.score())
     }
 }
 
-impl FromWithParameters<TimedInternalGame> for TimedPublicGame {
-    fn from_with_parameters(internal: TimedInternalGame, parameters: Parameters) -> Self {
-        TimedPublicGame::new(
-            internal.time,
-            internal.opponent.into_with_parameters(parameters),
-            internal.score,
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedGame<Scale1>>
+    for TimedGame<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_parameters(game: TimedGame<Scale1>, parameters: Parameters) -> Self {
+        TimedGame::new(
+            game.time,
+            game.opponent.into_with_parameters(parameters),
+            game.score,
         )
     }
 }
 
-/// Game information encompassing
-/// - The time the game was recorded
-/// - The [`TimedInternalRating`] of the opponent
-/// - The score as a number between `0.0` (decisive opponent win) and `1.0` (decisive player win)
-///
-/// Keep in mind that this struct does not hold information about the player's rating, only the opponent's.
-/// This is because it is used to register games on and therefore update the player's rating struct.
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedInternalGame {
-    time: SystemTime,
-    opponent: TimedInternalRating,
-    score: f64,
-}
-
-impl TimedInternalGame {
-    /// Creates a new [`TimedInternalGame`] at the given `time` with the given `opponent` and `score`.
-    /// `score` is a number between 0.0 (decisive opponent win) and `1.0` (decisive player win).
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
-    #[must_use]
-    pub fn new(time: SystemTime, opponent: TimedInternalRating, score: f64) -> Self {
-        assert!((0.0..=1.0).contains(&score));
-
-        TimedInternalGame {
-            time,
-            opponent,
-            score,
-        }
-    }
-
-    /// The time this game was recorded.
-    #[must_use]
-    pub fn time(&self) -> SystemTime {
-        self.time
-    }
-
-    /// The opponent's rating.
-    #[must_use]
-    pub fn opponent(&self) -> TimedInternalRating {
-        self.opponent
-    }
-
-    /// The game score as a number between `0.0` (decisive opponent win) and `1.0` (decisive player win).
-    #[must_use]
-    pub fn score(&self) -> f64 {
-        self.score
-    }
-
-    /// The game with timing information erased
-    /// and the opponent's rating resolved to their rating at the time of the last update.
-    #[must_use]
-    pub fn raw_internal_game(&self) -> InternalGame {
-        InternalGame::new(self.opponent().raw_internal_rating(), self.score())
-    }
-
-    /// Converts this [`TimedInternalGame`] to an [`InternalGame`],
-    /// erasing the timing information and resolving the opponents rating to their rating at the time of the game.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if the opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
-    #[must_use]
-    pub fn to_internal_game(&self, rating_period_duration: Duration) -> InternalGame {
-        self.internal_game_at(self.time(), rating_period_duration)
-    }
-
-    /// Converts this [`TimedInternalGame`] to an [`InternalGame`],
-    /// erasing the timing information and resolving the opponent's rating to their rating at the given `time`.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if the given `time` is before the opponent rating's last update, or if `rating_period_duration` is zero.
-    #[must_use]
-    pub fn internal_game_at(
-        &self,
-        time: SystemTime,
-        rating_period_duration: Duration,
-    ) -> InternalGame {
-        let opponent = self
-            .opponent()
-            .internal_rating_at(time, rating_period_duration);
-
-        InternalGame::new(opponent, self.score)
-    }
-}
-
-impl FromWithParameters<TimedPublicGame> for TimedInternalGame {
-    fn from_with_parameters(public: TimedPublicGame, parameters: Parameters) -> Self {
-        TimedInternalGame::new(
-            public.time,
-            public.opponent.into_with_parameters(parameters),
-            public.score,
-        )
-    }
-}
-
-/// A match result where the opponent's rating is a [`TimedPublicRating`].
+/// A match result where the opponent's rating is a [`TimedRating`].
 /// The game itself is not timed.
 /// The struct holds only the opponent's rating and the game score from the player's perspective.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedOpponentPublicGame {
-    opponent: TimedPublicRating,
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "", serialize = "")))]
+pub struct TimedOpponentGame<Scale: RatingScale> {
+    opponent: TimedRating<Scale>,
     score: f64,
 }
 
-impl TimedOpponentPublicGame {
-    /// Creates a new [`TimedOpponentPublicGame`] with the given `opponent` and the player's `score`.
+/// A [`TimedOpponentGame`] of [`Public`] scale.
+pub type PublicTimedOpponentGame = TimedOpponentGame<Public>;
+
+/// A [`TimedOpponentGame`] of [`Internal`] scale.
+pub type InternalTimedOpponentGame = TimedOpponentGame<Internal>;
+
+impl<Scale: RatingScale> TimedOpponentGame<Scale> {
+    /// Creates a new [`TimedOpponentGame`] with the given `opponent` and the player's `score`.
     /// `score` is a number between 0.0 (decisive opponent win) and `1.0` (decisive player win).
     ///
     /// # Panics
     ///
     /// This function panics if `score` is less than `0.0` or greater than `1.0`.
     #[must_use]
-    pub fn new(opponent: TimedPublicRating, score: f64) -> Self {
+    pub fn new(opponent: TimedRating<Scale>, score: f64) -> Self {
         assert!((0.0..=1.0).contains(&score));
 
-        TimedOpponentPublicGame { opponent, score }
+        TimedOpponentGame { opponent, score }
     }
 
     /// The opponent's rating.
     #[must_use]
-    pub fn opponent(&self) -> TimedPublicRating {
+    pub fn opponent(&self) -> TimedRating<Scale> {
         self.opponent
     }
 
@@ -560,128 +348,73 @@ impl TimedOpponentPublicGame {
         self.score
     }
 
-    /// Returns a [`TimedPublicGame`] which represents the given game happening at the given `time`.
+    /// Returns a [`TimedGame`] which represents the given game happening at the given `time`.
     #[must_use]
-    pub fn timed_public_game_at(&self, time: SystemTime) -> TimedPublicGame {
-        TimedPublicGame::new(time, self.opponent, self.score)
+    pub fn timed_game_at(&self, time: SystemTime) -> TimedGame<Scale> {
+        TimedGame::new(time, self.opponent, self.score)
     }
 
-    /// Returns a [`PublicGame`], resolving the opponent's rating to their rating at the given time.
+    /// Returns a [`Game`], resolving the opponent's rating to their rating at the given time.
     #[must_use]
-    pub fn public_game_at(
+    pub fn game_at(
         &self,
         time: SystemTime,
         parameters: Parameters,
         rating_period_duration: Duration,
-    ) -> PublicGame {
+    ) -> Game<Scale>
+    where
+        Scale: ConvertToScale<Internal>,
+        Internal: ConvertToScale<Scale>,
+    {
         let opponent = self
             .opponent
-            .public_rating_at(time, parameters, rating_period_duration);
+            .rating_at(time, parameters, rating_period_duration);
 
-        PublicGame::new(opponent, self.score)
+        Game::new(opponent, self.score)
     }
 }
 
-impl FromWithParameters<TimedOpponentInternalGame> for TimedOpponentPublicGame {
-    fn from_with_parameters(internal: TimedOpponentInternalGame, parameters: Parameters) -> Self {
-        TimedOpponentPublicGame::new(
-            internal.opponent.into_with_parameters(parameters),
-            internal.score,
-        )
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedOpponentGame<Scale1>>
+    for TimedOpponentGame<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_parameters(game: TimedOpponentGame<Scale1>, parameters: Parameters) -> Self {
+        TimedOpponentGame::new(game.opponent.into_with_parameters(parameters), game.score)
     }
 }
 
-/// A match result where the opponent's rating is a [`TimedInternalRating`].
-/// The game itself is not timed.
-/// The struct holds only the opponent's rating and the game score from the player's perspective.
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedOpponentInternalGame {
-    opponent: TimedInternalRating,
-    score: f64,
-}
-
-impl TimedOpponentInternalGame {
-    /// Creates a new [`TimedOpponentInternalGame`] with the given `opponent` and the player's `score`.
-    /// `score` is a number between 0.0 (decisive opponent win) and `1.0` (decisive player win).
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `score` is less than `0.0` or greater than `1.0`.
-    #[must_use]
-    pub fn new(opponent: TimedInternalRating, score: f64) -> Self {
-        assert!((0.0..=1.0).contains(&score));
-
-        TimedOpponentInternalGame { opponent, score }
-    }
-
-    /// The opponent's rating.
-    #[must_use]
-    pub fn opponent(&self) -> TimedInternalRating {
-        self.opponent
-    }
-
-    /// The game score as a number between `0.0` (decisive opponent win) and `1.0` (decisive player win).
-    #[must_use]
-    pub fn score(&self) -> f64 {
-        self.score
-    }
-
-    /// Returns a [`TimedInternalGame`] which represents the given game happening at the given `time`.
-    #[must_use]
-    pub fn timed_internal_game_at(&self, time: SystemTime) -> TimedInternalGame {
-        TimedInternalGame::new(time, self.opponent, self.score)
-    }
-
-    /// Returns a [`InternalGame`], resolving the opponent's rating to their rating at the given time.
-    #[must_use]
-    pub fn internal_game_at(
-        &self,
-        time: SystemTime,
-        rating_period_duration: Duration,
-    ) -> InternalGame {
-        let opponent = self
-            .opponent
-            .internal_rating_at(time, rating_period_duration);
-
-        InternalGame::new(opponent, self.score)
-    }
-}
-
-impl FromWithParameters<TimedOpponentPublicGame> for TimedOpponentInternalGame {
-    fn from_with_parameters(public: TimedOpponentPublicGame, parameters: Parameters) -> Self {
-        TimedOpponentInternalGame::new(
-            public.opponent.into_with_parameters(parameters),
-            public.score,
-        )
-    }
-}
-
-/// A collection of [`TimedOpponentPublicGame`] where the games are
+/// A collection of [`TimedOpponentGame`]s where the games are
 /// all considered to be played at the same, known time.
 /// This struct does not hold information about the player, only about the opponents.
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedPublicGames {
+#[cfg_attr(feature = "serde", serde(bound(deserialize = "", serialize = "")))]
+pub struct TimedGames<Scale: RatingScale> {
     time: SystemTime,
-    games: Vec<TimedOpponentPublicGame>,
+    games: Vec<TimedOpponentGame<Scale>>,
 }
 
-impl TimedPublicGames {
-    /// Creates a new [`TimedPublicGames`] instance
+/// A [`TimedGames`] of [`Public`] scale.
+pub type PublicTimedGames = TimedGames<Public>;
+/// A [`TimedGames`] of [`Internal`] scale.
+pub type InternalTimedGames = TimedGames<Internal>;
+
+impl<Scale: RatingScale> TimedGames<Scale> {
+    /// Creates a new [`TimedGames`] instance
     /// where all `games` are considered to be played at the given `time`.
     #[must_use]
-    pub fn new(time: SystemTime, games: Vec<TimedOpponentPublicGame>) -> Self {
-        TimedPublicGames { time, games }
+    pub fn new(time: SystemTime, games: Vec<TimedOpponentGame<Scale>>) -> Self {
+        TimedGames { time, games }
     }
 
-    /// Creates a new [`TimedPublicGames`] instance from a single `game`,
+    /// Creates a new [`TimedGames`] instance from a single `game`,
     /// which is considered to be played at the given `time`.
     #[must_use]
-    pub fn single(game: TimedPublicGame) -> Self {
-        TimedPublicGames::new(
+    pub fn single(game: TimedGame<Scale>) -> Self {
+        TimedGames::new(
             game.time(),
-            vec![TimedOpponentPublicGame::new(game.opponent(), game.score())],
+            vec![TimedOpponentGame::new(game.opponent(), game.score())],
         )
     }
 
@@ -693,102 +426,37 @@ impl TimedPublicGames {
 
     /// The games without information about when the games were played.
     #[must_use]
-    pub fn games(&self) -> &[TimedOpponentPublicGame] {
+    pub fn games(&self) -> &[TimedOpponentGame<Scale>] {
         &self.games
     }
 
     /// Iterator over the games with information about when they were played.
-    pub fn timed_games(&self) -> impl Iterator<Item = TimedPublicGame> + '_ {
+    pub fn timed_games(&self) -> impl Iterator<Item = TimedGame<Scale>> + '_ {
         self.games
             .iter()
-            .map(|game| game.timed_public_game_at(self.time()))
+            .map(|game| game.timed_game_at(self.time()))
     }
 }
 
-impl From<TimedPublicGame> for TimedPublicGames {
-    fn from(game: TimedPublicGame) -> Self {
-        TimedPublicGames::single(game)
+impl<Scale: RatingScale> From<TimedGame<Scale>> for TimedGames<Scale> {
+    fn from(game: TimedGame<Scale>) -> Self {
+        TimedGames::single(game)
     }
 }
 
-impl FromWithParameters<TimedInternalGames> for TimedPublicGames {
-    fn from_with_parameters(internal: TimedInternalGames, parameters: Parameters) -> Self {
-        let public_games = internal
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedGames<Scale1>>
+    for TimedGames<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_parameters(games: TimedGames<Scale1>, parameters: Parameters) -> Self {
+        let public_games = games
             .games()
             .iter()
             .map(|&game| game.into_with_parameters(parameters))
             .collect();
 
-        TimedPublicGames::new(internal.time(), public_games)
-    }
-}
-
-/// A collection of [`TimedOpponentInternalGame`] where the games are
-/// all considered to be played at the same, known time.
-/// This struct does not hold information about the player, only about the opponents.
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct TimedInternalGames {
-    time: SystemTime,
-    games: Vec<TimedOpponentInternalGame>,
-}
-
-impl TimedInternalGames {
-    /// Creates a new [`TimedInternalGames`] instance
-    /// where all `games` are considered to be played at the given `time`.
-    #[must_use]
-    pub fn new(time: SystemTime, games: Vec<TimedOpponentInternalGame>) -> Self {
-        TimedInternalGames { time, games }
-    }
-
-    /// Creates a new [`TimedInternalGames`] instance from a single `game`,
-    /// which is considered to be played at the given `time`.
-    #[must_use]
-    pub fn single(game: TimedInternalGame) -> Self {
-        TimedInternalGames::new(
-            game.time(),
-            vec![TimedOpponentInternalGame::new(
-                game.opponent(),
-                game.score(),
-            )],
-        )
-    }
-
-    /// The time the games are considered to be played at.
-    #[must_use]
-    pub fn time(&self) -> SystemTime {
-        self.time
-    }
-
-    /// The games without information about when the games were played.
-    #[must_use]
-    pub fn games(&self) -> &[TimedOpponentInternalGame] {
-        &self.games
-    }
-
-    /// Iterator over the games with information about when they were played.
-    pub fn timed_games(&self) -> impl Iterator<Item = TimedInternalGame> + '_ {
-        self.games
-            .iter()
-            .map(|game| game.timed_internal_game_at(self.time()))
-    }
-}
-
-impl From<TimedInternalGame> for TimedInternalGames {
-    fn from(game: TimedInternalGame) -> Self {
-        TimedInternalGames::single(game)
-    }
-}
-
-impl FromWithParameters<TimedPublicGames> for TimedInternalGames {
-    fn from_with_parameters(public: TimedPublicGames, parameters: Parameters) -> Self {
-        let internal_games = public
-            .games()
-            .iter()
-            .map(|&game| game.into_with_parameters(parameters))
-            .collect();
-
-        TimedInternalGames::new(public.time(), internal_games)
+        TimedGames::new(games.time(), public_games)
     }
 }
 
@@ -809,20 +477,20 @@ impl FromWithParameters<TimedPublicGames> for TimedInternalGames {
 /// It can also panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_game(
-    player_rating: TimedInternalRating,
-    game: TimedInternalGame,
+    player_rating: InternalTimedRating,
+    game: InternalTimedGame,
     rating_period_duration: Duration,
     parameters: Parameters,
-) -> TimedInternalRating {
+) -> InternalTimedRating {
     rate_games(
         player_rating,
-        &TimedInternalGames::single(game),
+        &InternalTimedGames::single(game),
         rating_period_duration,
         parameters,
     )
 }
 
-/// Calculates the new internal player rating after the given [`TimedInternalGames`] using the Glicko-2 algorithm.
+/// Calculates the new internal player rating after the given [`InternalTimedGames`] using the Glicko-2 algorithm.
 /// This is useful since Glicko-2 assumes all games within a rating period were played at the same point in time.
 ///
 /// However, this function only provides an *approximation* for the actual new rating
@@ -840,11 +508,11 @@ pub fn rate_game(
 /// It can also panic if `parameters.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_games(
-    player_rating: TimedInternalRating,
-    games: &TimedInternalGames,
+    player_rating: InternalTimedRating,
+    games: &InternalTimedGames,
     rating_period_duration: Duration,
     parameters: Parameters,
-) -> TimedInternalRating {
+) -> InternalTimedRating {
     // Step 1. (initialising) doesn't apply, we have already set the starting ratings.
     // Step 2. (converting to internal scale) doesn't apply either, we get typed checked internal rating here
 
@@ -856,20 +524,20 @@ pub fn rate_games(
     }
 
     // Raw rating because pre_rating_period_value will handle that
-    let player_rating = player_rating.internal_rating_at(game_time, rating_period_duration);
+    let player_rating = player_rating.rating_at(game_time, parameters, rating_period_duration);
 
     let internal_games: Vec<_> = games
         .timed_games()
         // Technically we should get internal game at time player_last_updated,
         // but that would make all opponents being last updated before that a requirement,
         // which is unreasonable. Errors because of this tend to be small.
-        .map(|game| game.to_internal_game(rating_period_duration))
+        .map(|game| game.to_game(parameters, rating_period_duration))
         .collect();
 
     // elapsed_periods is 0.0 since we set last_updated to game_time (no time elapsed since game)
     let new_rating = rate_games_untimed(player_rating, &internal_games, 0.0, parameters);
 
-    TimedInternalRating::new(
+    TimedRating::new(
         game_time,
         InternalRating::new(
             new_rating.rating(),
@@ -1143,8 +811,8 @@ mod test {
     use std::time::{Duration, SystemTime};
 
     use crate::algorithm::{
-        rate_games, rate_games_untimed, PublicGame, TimedOpponentPublicGame, TimedPublicGames,
-        TimedPublicRating,
+        rate_games, rate_games_untimed, PublicGame, PublicTimedGames, PublicTimedOpponentGame,
+        PublicTimedRating,
     };
     use crate::{FromWithParameters, IntoWithParameters, Parameters, PublicRating};
 
@@ -1169,9 +837,9 @@ mod test {
         let start_time = SystemTime::UNIX_EPOCH;
         let rating_period_duration = Duration::from_secs(1);
 
-        let player = TimedPublicRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
+        let player = PublicTimedRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
         let rating_at_start =
-            player.public_rating_at(SystemTime::UNIX_EPOCH, parameters, rating_period_duration);
+            player.rating_at(SystemTime::UNIX_EPOCH, parameters, rating_period_duration);
 
         assert_approx_eq!(rating_at_start.rating(), 1500.0, f64::EPSILON);
         assert_approx_eq!(rating_at_start.deviation(), 200.0, f64::EPSILON);
@@ -1187,30 +855,30 @@ mod test {
         let rating_period_duration = Duration::from_secs(1);
         let end_time = start_time + rating_period_duration;
 
-        let player = TimedPublicRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
+        let player = PublicTimedRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
 
         // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
         // Constructor asserts it to be > 0.0
-        let opponent_a = TimedPublicRating::new(
+        let opponent_a = PublicTimedRating::new(
             start_time,
             PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
         );
-        let opponent_b = TimedPublicRating::new(
+        let opponent_b = PublicTimedRating::new(
             start_time,
             PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility()),
         );
-        let opponent_c = TimedPublicRating::new(
+        let opponent_c = PublicTimedRating::new(
             start_time,
             PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility()),
         );
 
         let games = vec![
-            TimedOpponentPublicGame::new(opponent_a, 1.0),
-            TimedOpponentPublicGame::new(opponent_b, 0.0),
-            TimedOpponentPublicGame::new(opponent_c, 0.0),
+            PublicTimedOpponentGame::new(opponent_a, 1.0),
+            PublicTimedOpponentGame::new(opponent_b, 0.0),
+            PublicTimedOpponentGame::new(opponent_c, 0.0),
         ];
 
-        let games = TimedPublicGames::new(end_time, games);
+        let games = PublicTimedGames::new(end_time, games);
 
         let new_rating = rate_games(
             player.into_with_parameters(parameters),
@@ -1220,8 +888,8 @@ mod test {
         );
 
         // All games are considered to occur at the same time in the example
-        let new_public_rating = TimedPublicRating::from_with_parameters(new_rating, parameters)
-            .public_rating_at(end_time, parameters, rating_period_duration);
+        let new_public_rating = PublicTimedRating::from_with_parameters(new_rating, parameters)
+            .rating_at(end_time, parameters, rating_period_duration);
 
         // However, we make an compromise for the opponent ratings to be able to be updated before the player ratings
         // which makes the algorithm a bit less accurate, thus the slightly higher tolerances
