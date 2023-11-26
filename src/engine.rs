@@ -186,9 +186,10 @@ impl RatingEngine {
     /// # Panics
     ///
     /// This function panics if `start_time` is in the future.
-    // FIXME: No it doesn't
     #[must_use]
     pub fn start_new_at(start_time: SystemTime, settings: GlickoSettings) -> Self {
+        assert!(start_time < SystemTime::now());
+
         RatingEngine {
             last_rating_period_start: start_time,
             managed_players: PushOnlyVec::new(),
