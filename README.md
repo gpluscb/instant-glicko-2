@@ -18,13 +18,11 @@ instant-glicko-2 = "0.2.0"
 
 # Examples
 
-Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using `algorithm`:
-
 ```rust
-use instant_glicko_2::{Parameters, PublicRating, IntoWithParameters};
+use instant_glicko_2::{GlickoSettings, PublicRating, IntoWithSettings};
 use instant_glicko_2::algorithm::{self, PublicGame};
 
-let parameters = Parameters::default().with_volatility_change(0.5);
+let settings = GlickoSettings::default().with_volatility_change(0.5);
 
 // Create our player's rating
 let mut player = PublicRating::new(1500.0, 200.0, 0.06);
@@ -32,44 +30,39 @@ let mut player = PublicRating::new(1500.0, 200.0, 0.06);
 // Create our opponents
 // Their volatility is not specified in the paper and it doesn't matter in the calculation,
 // so we're just using the default starting volatility.
-let opponent_a = PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility());
-let opponent_b = PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility());
-let opponent_c = PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility());
+let opponent_a = PublicRating::new(1400.0, 30.0, settings.start_rating().volatility());
+let opponent_b = PublicRating::new(1550.0, 100.0, settings.start_rating().volatility());
+let opponent_c = PublicRating::new(1700.0, 300.0, settings.start_rating().volatility());
 
 // Create match results for our player
 let results = [
     // Wins first game (score 1.0)
-    PublicGame::new(opponent_a, 1.0).into_with_parameters(parameters),
+    PublicGame::new(opponent_a, 1.0).into_with_settings(settings),
     // Loses second game (score 0.0)
-    PublicGame::new(opponent_b, 0.0).into_with_parameters(parameters),
+    PublicGame::new(opponent_b, 0.0).into_with_settings(settings),
     // Loses third game (score 0.0)
-    PublicGame::new(opponent_c, 0.0).into_with_parameters(parameters),
+    PublicGame::new(opponent_c, 0.0).into_with_settings(settings),
 ];
 
 // Update rating after rating period
-let new_rating: PublicRating = algorithm::rate_games_untimed(player.into_with_parameters(parameters), &results, 1.0, parameters).into_with_parameters(parameters);
+let new_rating: PublicRating = algorithm::rate_games_untimed(player.into_with_settings(settings), &results, 1.0, settings).into_with_settings(settings);
 
 // The rating after the rating period are very close to the results from the paper
 assert!((new_rating.rating() - 1464.06).abs() < 0.01);
 assert!((new_rating.deviation() - 151.52).abs() < 0.01);
 assert!((new_rating.volatility() - 0.05999).abs() < 0.0001);
 ```
-
-Different example using `RatingEngine`:
-
+Different example using [`RatingEngine`][engine::RatingEngine]:
 ```rust
 use std::time::Duration;
-use instant_glicko_2::{Parameters, PublicRating};
+use instant_glicko_2::{GlickoSettings, PublicRating};
 use instant_glicko_2::engine::{MatchResult, RatingEngine};
 
-let parameters = Parameters::default();
+let settings = GlickoSettings::default();
 
 // Create a RatingEngine with a one day rating period duration
 // The first rating period starts instantly
-let mut engine = RatingEngine::start_new(
-    Duration::from_secs(60 * 60 * 24),
-    Parameters::default(),
-);
+let mut engine = RatingEngine::start_new(GlickoSettings::default());
 
 // Register two players
 // The first player is relatively strong
@@ -77,7 +70,7 @@ let player_1_rating_old = PublicRating::new(1700.0, 300.0, 0.06);
 let player_1 = engine.register_player(player_1_rating_old).0;
 
 // The second player hasn't played any games
-let player_2_rating_old = parameters.start_rating();
+let player_2_rating_old = settings.start_rating();
 let player_2 = engine.register_player(player_2_rating_old).0;
 
 // They play and player_2 wins

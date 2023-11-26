@@ -5,8 +5,8 @@ use std::f64::consts::PI;
 use std::time::{Duration, SystemTime};
 
 use crate::{
-    constants, ConvertToScale, FromWithParameters, Internal, InternalRating, IntoWithParameters,
-    Parameters, Public, Rating, RatingScale,
+    constants, ConvertToScale, FromWithSettings, GlickoSettings, Internal, InternalRating,
+    IntoWithSettings, Public, Rating, RatingScale,
 };
 
 #[cfg(feature = "serde")]
@@ -58,53 +58,44 @@ impl<Scale: RatingScale> TimedRating<Scale> {
     }
 
     /// The rating with the deviation updated to the current time after no games were played since the last update.
-    /// Convenience for `self.rating_at(SystemTime::now(), parameters, rating_period_duration)`.
+    /// Convenience for `self.rating_at(SystemTime::now(), settings)`.
     ///
     /// # Panics
     ///
-    /// This function panics if `last_updated` is in the future, or if the `rating_period_duration` is zero.
+    /// This function panics if `last_updated` is in the future.
     #[must_use]
-    pub fn rating_now(
-        &self,
-        parameters: Parameters,
-        rating_period_duration: Duration,
-    ) -> Rating<Scale>
+    pub fn rating_now(&self, settings: GlickoSettings) -> Rating<Scale>
     where
         Scale: ConvertToScale<Internal>,
         Internal: ConvertToScale<Scale>,
     {
-        self.rating_at(SystemTime::now(), parameters, rating_period_duration)
+        self.rating_at(SystemTime::now(), settings)
     }
 
     /// The rating with the deviation updated to the given time after no games were played since the last update.
     ///
     /// # Panics
     ///
-    /// This function panics if `last_updated` is after `time`, or if the `rating_period_duration` is zero.
+    /// This function panics if `last_updated` is after `time`.
     #[must_use]
-    pub fn rating_at(
-        &self,
-        time: SystemTime,
-        parameters: Parameters,
-        rating_period_duration: Duration,
-    ) -> Rating<Scale>
+    pub fn rating_at(&self, time: SystemTime, settings: GlickoSettings) -> Rating<Scale>
     where
         Scale: ConvertToScale<Internal>,
         Internal: ConvertToScale<Scale>,
     {
-        let internal_rating: InternalRating = self.rating.into_with_parameters(parameters);
+        let internal_rating: InternalRating = self.rating.into_with_settings(settings);
 
         let new_deviation = calculate_pre_rating_period_value(
             internal_rating.volatility(),
             internal_rating,
-            self.elapsed_rating_periods(time, rating_period_duration),
+            self.elapsed_rating_periods(time, settings.rating_period_duration),
         );
 
         InternalRating {
             deviation: new_deviation,
             ..internal_rating
         }
-        .into_with_parameters(parameters)
+        .into_with_settings(settings)
     }
 
     /// # Panics
@@ -119,15 +110,15 @@ impl<Scale: RatingScale> TimedRating<Scale> {
     }
 }
 
-impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedRating<Scale1>>
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<TimedRating<Scale1>>
     for TimedRating<Scale2>
 where
     Scale1: ConvertToScale<Scale2>,
 {
-    fn from_with_parameters(rating: TimedRating<Scale1>, parameters: Parameters) -> Self {
+    fn from_with_settings(rating: TimedRating<Scale1>, settings: GlickoSettings) -> Self {
         TimedRating::new(
             rating.last_updated,
-            rating.rating.into_with_parameters(parameters),
+            rating.rating.into_with_settings(settings),
         )
     }
 }
@@ -177,12 +168,12 @@ impl<Scale: RatingScale> Game<Scale> {
     }
 }
 
-impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<Game<Scale1>> for Game<Scale2>
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<Game<Scale1>> for Game<Scale2>
 where
     Scale1: ConvertToScale<Scale2>,
 {
-    fn from_with_parameters(game: Game<Scale1>, parameters: Parameters) -> Self {
-        Game::new(game.opponent.into_with_parameters(parameters), game.score)
+    fn from_with_settings(game: Game<Scale1>, settings: GlickoSettings) -> Self {
+        Game::new(game.opponent.into_with_settings(settings), game.score)
     }
 }
 
@@ -256,14 +247,14 @@ impl<Scale: RatingScale> TimedGame<Scale> {
     ///
     /// # Panics
     ///
-    /// This function panics if the opponent rating was updated after the game was recorded, or if the `rating_period_duration` is zero.
+    /// This function panics if the opponent rating was updated after the game was recorded.
     #[must_use]
-    pub fn to_game(&self, parameters: Parameters, rating_period_duration: Duration) -> Game<Scale>
+    pub fn to_game(&self, settings: GlickoSettings) -> Game<Scale>
     where
         Scale: ConvertToScale<Internal>,
         Internal: ConvertToScale<Scale>,
     {
-        self.game_at(self.time(), parameters, rating_period_duration)
+        self.game_at(self.time(), settings)
     }
 
     /// Converts this [`TimedGame`] to a [`Game`],
@@ -271,35 +262,28 @@ impl<Scale: RatingScale> TimedGame<Scale> {
     ///
     /// # Panics
     ///
-    /// This function panics if the given `time` is before the opponent rating's last update, or if `rating_period_duration` is zero.
+    /// This function panics if the given `time` is before the opponent rating's last update.
     #[must_use]
-    pub fn game_at(
-        &self,
-        time: SystemTime,
-        parameters: Parameters,
-        rating_period_duration: Duration,
-    ) -> Game<Scale>
+    pub fn game_at(&self, time: SystemTime, settings: GlickoSettings) -> Game<Scale>
     where
         Scale: ConvertToScale<Internal>,
         Internal: ConvertToScale<Scale>,
     {
-        let opponent = self
-            .opponent()
-            .rating_at(time, parameters, rating_period_duration);
+        let opponent = self.opponent().rating_at(time, settings);
 
         Game::new(opponent, self.score())
     }
 }
 
-impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedGame<Scale1>>
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<TimedGame<Scale1>>
     for TimedGame<Scale2>
 where
     Scale1: ConvertToScale<Scale2>,
 {
-    fn from_with_parameters(game: TimedGame<Scale1>, parameters: Parameters) -> Self {
+    fn from_with_settings(game: TimedGame<Scale1>, settings: GlickoSettings) -> Self {
         TimedGame::new(
             game.time,
-            game.opponent.into_with_parameters(parameters),
+            game.opponent.into_with_settings(settings),
             game.score,
         )
     }
@@ -355,32 +339,29 @@ impl<Scale: RatingScale> TimedOpponentGame<Scale> {
     }
 
     /// Returns a [`Game`], resolving the opponent's rating to their rating at the given time.
+    ///
+    /// # Panics
+    ///
+    /// This function panics if the given `time` is before the opponent rating's last update.
     #[must_use]
-    pub fn game_at(
-        &self,
-        time: SystemTime,
-        parameters: Parameters,
-        rating_period_duration: Duration,
-    ) -> Game<Scale>
+    pub fn game_at(&self, time: SystemTime, settings: GlickoSettings) -> Game<Scale>
     where
         Scale: ConvertToScale<Internal>,
         Internal: ConvertToScale<Scale>,
     {
-        let opponent = self
-            .opponent
-            .rating_at(time, parameters, rating_period_duration);
+        let opponent = self.opponent.rating_at(time, settings);
 
         Game::new(opponent, self.score)
     }
 }
 
-impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedOpponentGame<Scale1>>
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<TimedOpponentGame<Scale1>>
     for TimedOpponentGame<Scale2>
 where
     Scale1: ConvertToScale<Scale2>,
 {
-    fn from_with_parameters(game: TimedOpponentGame<Scale1>, parameters: Parameters) -> Self {
-        TimedOpponentGame::new(game.opponent.into_with_parameters(parameters), game.score)
+    fn from_with_settings(game: TimedOpponentGame<Scale1>, settings: GlickoSettings) -> Self {
+        TimedOpponentGame::new(game.opponent.into_with_settings(settings), game.score)
     }
 }
 
@@ -444,16 +425,16 @@ impl<Scale: RatingScale> From<TimedGame<Scale>> for TimedGames<Scale> {
     }
 }
 
-impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<TimedGames<Scale1>>
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<TimedGames<Scale1>>
     for TimedGames<Scale2>
 where
     Scale1: ConvertToScale<Scale2>,
 {
-    fn from_with_parameters(games: TimedGames<Scale1>, parameters: Parameters) -> Self {
+    fn from_with_settings(games: TimedGames<Scale1>, settings: GlickoSettings) -> Self {
         let public_games = games
             .games()
             .iter()
-            .map(|&game| game.into_with_parameters(parameters))
+            .map(|&game| game.into_with_settings(settings))
             .collect();
 
         TimedGames::new(games.time(), public_games)
@@ -471,23 +452,16 @@ where
 ///
 /// # Panics
 ///
-/// This function panics if the `player_rating` or any opponent ratings were updated after the game was played,
-/// or if the `rating_period_duration` is zero.
+/// This function panics if the `player_rating` or any opponent ratings were updated after the game was played.
 ///
-/// It can also panic if `parameters.convergence_tolerance()` is unreasonably low.
+/// It can also panic if `settings.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_game(
     player_rating: InternalTimedRating,
     game: InternalTimedGame,
-    rating_period_duration: Duration,
-    parameters: Parameters,
+    settings: GlickoSettings,
 ) -> InternalTimedRating {
-    rate_games(
-        player_rating,
-        &InternalTimedGames::single(game),
-        rating_period_duration,
-        parameters,
-    )
+    rate_games(player_rating, &InternalTimedGames::single(game), settings)
 }
 
 /// Calculates the new internal player rating after the given [`InternalTimedGames`] using the Glicko-2 algorithm.
@@ -502,16 +476,14 @@ pub fn rate_game(
 ///
 /// # Panics
 ///
-/// This function panics if the `player_rating` or any opponent ratings were updated after the games were played,
-/// or if `rating_period_duration` is zero.
+/// This function panics if the `player_rating` or any opponent ratings were updated after the games were played.
 ///
-/// It can also panic if `parameters.convergence_tolerance()` is unreasonably low.
+/// It can also panic if `settings.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_games(
     player_rating: InternalTimedRating,
     games: &InternalTimedGames,
-    rating_period_duration: Duration,
-    parameters: Parameters,
+    settings: GlickoSettings,
 ) -> InternalTimedRating {
     // Step 1. (initialising) doesn't apply, we have already set the starting ratings.
     // Step 2. (converting to internal scale) doesn't apply either, we get typed checked internal rating here
@@ -524,18 +496,18 @@ pub fn rate_games(
     }
 
     // Raw rating because pre_rating_period_value will handle that
-    let player_rating = player_rating.rating_at(game_time, parameters, rating_period_duration);
+    let player_rating = player_rating.rating_at(game_time, settings);
 
     let internal_games: Vec<_> = games
         .timed_games()
         // Technically we should get internal game at time player_last_updated,
         // but that would make all opponents being last updated before that a requirement,
         // which is unreasonable. Errors because of this tend to be small.
-        .map(|game| game.to_game(parameters, rating_period_duration))
+        .map(|game| game.to_game(settings))
         .collect();
 
     // elapsed_periods is 0.0 since we set last_updated to game_time (no time elapsed since game)
-    let new_rating = rate_games_untimed(player_rating, &internal_games, 0.0, parameters);
+    let new_rating = rate_games_untimed(player_rating, &internal_games, 0.0, settings);
 
     TimedRating::new(
         game_time,
@@ -554,13 +526,13 @@ pub fn rate_games(
 ///
 /// This function panics if `elapsed_periods` is less than `0`.
 ///
-/// It can also panic if `parameters.convergence_tolerance()` is unreasonably low.
+/// It can also panic if `settings.convergence_tolerance()` is unreasonably low.
 #[must_use]
 pub fn rate_games_untimed(
     player_rating: InternalRating,
     results: &[InternalGame],
     elapsed_periods: f64,
-    parameters: Parameters,
+    settings: GlickoSettings,
 ) -> InternalRating {
     assert!(elapsed_periods >= 0.0);
 
@@ -580,7 +552,7 @@ pub fn rate_games_untimed(
             new_deviation,
             player_rating.volatility(),
         )
-        .into_with_parameters(parameters);
+        .into_with_settings(settings);
     }
 
     // Step 3.
@@ -596,8 +568,8 @@ pub fn rate_games_untimed(
         estimated_improvement,
         estimated_variance,
         player_rating,
-        parameters.volatility_change(),
-        parameters.convergence_tolerance(),
+        settings.volatility_change(),
+        settings.convergence_tolerance(),
     );
 
     // Step 6.
@@ -679,7 +651,7 @@ fn calculate_e(g: f64, player_rating: f64, opponent_rating: f64) -> f64 {
 ///
 /// # Panics
 ///
-/// This function might panic if `parameters.convergence_tolerance()` is unreasonably low.
+/// This function might panic if `convergence_tolerance` is unreasonably low.
 #[must_use]
 fn calculate_new_volatility(
     estimated_improvement: f64,
@@ -814,7 +786,7 @@ mod test {
         rate_games, rate_games_untimed, PublicGame, PublicTimedGames, PublicTimedOpponentGame,
         PublicTimedRating,
     };
-    use crate::{FromWithParameters, IntoWithParameters, Parameters, PublicRating};
+    use crate::{FromWithSettings, GlickoSettings, IntoWithSettings, PublicRating};
 
     macro_rules! assert_approx_eq {
         ($a:expr, $b:expr, $tolerance:expr) => {{
@@ -832,14 +804,14 @@ mod test {
 
     #[test]
     fn test_start_time() {
-        let parameters = Parameters::default().with_volatility_change(0.5);
+        let settings = GlickoSettings::default()
+            .with_volatility_change(0.5)
+            .with_rating_period_duration(Duration::from_secs(1));
 
         let start_time = SystemTime::UNIX_EPOCH;
-        let rating_period_duration = Duration::from_secs(1);
 
         let player = PublicTimedRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
-        let rating_at_start =
-            player.rating_at(SystemTime::UNIX_EPOCH, parameters, rating_period_duration);
+        let rating_at_start = player.rating_at(SystemTime::UNIX_EPOCH, settings);
 
         assert_approx_eq!(rating_at_start.rating(), 1500.0, f64::EPSILON);
         assert_approx_eq!(rating_at_start.deviation(), 200.0, f64::EPSILON);
@@ -849,10 +821,12 @@ mod test {
     /// This tests the example calculation in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
     #[test]
     fn test_paper_example() {
-        let parameters = Parameters::default().with_volatility_change(0.5);
+        let rating_period_duration = Duration::from_secs(1);
+        let settings = GlickoSettings::default()
+            .with_volatility_change(0.5)
+            .with_rating_period_duration(rating_period_duration);
 
         let start_time = SystemTime::UNIX_EPOCH;
-        let rating_period_duration = Duration::from_secs(1);
         let end_time = start_time + rating_period_duration;
 
         let player = PublicTimedRating::new(start_time, PublicRating::new(1500.0, 200.0, 0.06));
@@ -861,15 +835,15 @@ mod test {
         // Constructor asserts it to be > 0.0
         let opponent_a = PublicTimedRating::new(
             start_time,
-            PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+            PublicRating::new(1400.0, 30.0, settings.start_rating().volatility()),
         );
         let opponent_b = PublicTimedRating::new(
             start_time,
-            PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility()),
+            PublicRating::new(1550.0, 100.0, settings.start_rating().volatility()),
         );
         let opponent_c = PublicTimedRating::new(
             start_time,
-            PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility()),
+            PublicRating::new(1700.0, 300.0, settings.start_rating().volatility()),
         );
 
         let games = vec![
@@ -881,15 +855,14 @@ mod test {
         let games = PublicTimedGames::new(end_time, games);
 
         let new_rating = rate_games(
-            player.into_with_parameters(parameters),
-            &games.into_with_parameters(parameters),
-            rating_period_duration,
-            parameters,
+            player.into_with_settings(settings),
+            &games.into_with_settings(settings),
+            settings,
         );
 
         // All games are considered to occur at the same time in the example
-        let new_public_rating = PublicTimedRating::from_with_parameters(new_rating, parameters)
-            .rating_at(end_time, parameters, rating_period_duration);
+        let new_public_rating = PublicTimedRating::from_with_settings(new_rating, settings)
+            .rating_at(end_time, settings);
 
         // However, we make an compromise for the opponent ratings to be able to be updated before the player ratings
         // which makes the algorithm a bit less accurate, thus the slightly higher tolerances
@@ -901,30 +874,26 @@ mod test {
     /// This tests the example calculation in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
     #[test]
     fn test_paper_example_untimed() {
-        let parameters = Parameters::default().with_volatility_change(0.5);
+        let settings = GlickoSettings::default().with_volatility_change(0.5);
 
         let player = PublicRating::new(1500.0, 200.0, 0.06);
 
         // Volatility on opponents is not specified in the paper and doesn't matter in the calculation.
         // Constructor asserts it to be > 0.0
-        let opponent_a = PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility());
-        let opponent_b = PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility());
-        let opponent_c = PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility());
+        let opponent_a = PublicRating::new(1400.0, 30.0, settings.start_rating().volatility());
+        let opponent_b = PublicRating::new(1550.0, 100.0, settings.start_rating().volatility());
+        let opponent_c = PublicRating::new(1700.0, 300.0, settings.start_rating().volatility());
 
         let games = vec![
-            PublicGame::new(opponent_a, 1.0).into_with_parameters(parameters),
-            PublicGame::new(opponent_b, 0.0).into_with_parameters(parameters),
-            PublicGame::new(opponent_c, 0.0).into_with_parameters(parameters),
+            PublicGame::new(opponent_a, 1.0).into_with_settings(settings),
+            PublicGame::new(opponent_b, 0.0).into_with_settings(settings),
+            PublicGame::new(opponent_c, 0.0).into_with_settings(settings),
         ];
 
-        let new_rating = rate_games_untimed(
-            player.into_with_parameters(parameters),
-            &games,
-            1.0,
-            parameters,
-        );
+        let new_rating =
+            rate_games_untimed(player.into_with_settings(settings), &games, 1.0, settings);
 
-        let new_public_rating = PublicRating::from_with_parameters(new_rating, parameters);
+        let new_public_rating = PublicRating::from_with_settings(new_rating, settings);
 
         assert_approx_eq!(new_public_rating.rating(), 1464.06, 0.01);
         assert_approx_eq!(new_public_rating.deviation(), 151.52, 0.01);

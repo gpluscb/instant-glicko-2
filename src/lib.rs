@@ -10,10 +10,10 @@
 //! Example calculation from [Glickman's paper](https://www.glicko.net/glicko/glicko2.pdf) using [`algorithm`]:
 //!
 //! ```
-//! use instant_glicko_2::{Parameters, PublicRating, IntoWithParameters};
+//! use instant_glicko_2::{GlickoSettings, PublicRating, IntoWithSettings};
 //! use instant_glicko_2::algorithm::{self, PublicGame};
 //!
-//! let parameters = Parameters::default().with_volatility_change(0.5);
+//! let settings = GlickoSettings::default().with_volatility_change(0.5);
 //!
 //! // Create our player's rating
 //! let mut player = PublicRating::new(1500.0, 200.0, 0.06);
@@ -21,22 +21,22 @@
 //! // Create our opponents
 //! // Their volatility is not specified in the paper and it doesn't matter in the calculation,
 //! // so we're just using the default starting volatility.
-//! let opponent_a = PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility());
-//! let opponent_b = PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility());
-//! let opponent_c = PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility());
+//! let opponent_a = PublicRating::new(1400.0, 30.0, settings.start_rating().volatility());
+//! let opponent_b = PublicRating::new(1550.0, 100.0, settings.start_rating().volatility());
+//! let opponent_c = PublicRating::new(1700.0, 300.0, settings.start_rating().volatility());
 //!
 //! // Create match results for our player
 //! let results = [
 //!     // Wins first game (score 1.0)
-//!     PublicGame::new(opponent_a, 1.0).into_with_parameters(parameters),
+//!     PublicGame::new(opponent_a, 1.0).into_with_settings(settings),
 //!     // Loses second game (score 0.0)
-//!     PublicGame::new(opponent_b, 0.0).into_with_parameters(parameters),
+//!     PublicGame::new(opponent_b, 0.0).into_with_settings(settings),
 //!     // Loses third game (score 0.0)
-//!     PublicGame::new(opponent_c, 0.0).into_with_parameters(parameters),
+//!     PublicGame::new(opponent_c, 0.0).into_with_settings(settings),
 //! ];
 //!
 //! // Update rating after rating period
-//! let new_rating: PublicRating = algorithm::rate_games_untimed(player.into_with_parameters(parameters), &results, 1.0, parameters).into_with_parameters(parameters);
+//! let new_rating: PublicRating = algorithm::rate_games_untimed(player.into_with_settings(settings), &results, 1.0, settings).into_with_settings(settings);
 //!
 //! // The rating after the rating period are very close to the results from the paper
 //! assert!((new_rating.rating() - 1464.06).abs() < 0.01);
@@ -49,24 +49,21 @@
 //! ```
 //! use std::time::Duration;
 //!
-//! use instant_glicko_2::{Parameters, PublicRating};
+//! use instant_glicko_2::{GlickoSettings, PublicRating};
 //! use instant_glicko_2::engine::{MatchResult, RatingEngine};
 //!
-//! let parameters = Parameters::default();
+//! let settings = GlickoSettings::default();
 //!
 //! // Create a RatingEngine with a one day rating period duration
 //! // The first rating period starts instantly
-//! let mut engine = RatingEngine::start_new(
-//!     Duration::from_secs(60 * 60 * 24),
-//!     Parameters::default(),
-//! );
+//! let mut engine = RatingEngine::start_new(GlickoSettings::default());
 //!
 //! // Register two players
 //! // The first player is relatively strong
 //! let player_1_rating_old = PublicRating::new(1700.0, 300.0, 0.06);
 //! let player_1 = engine.register_player(player_1_rating_old).0;
 //! // The second player hasn't played any games
-//! let player_2_rating_old = parameters.start_rating();
+//! let player_2_rating_old = settings.start_rating();
 //! let player_2 = engine.register_player(player_2_rating_old).0;
 //!
 //! // They play and player_2 wins
@@ -116,6 +113,7 @@ use constants::RATING_SCALING_RATIO;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::time::Duration;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -139,7 +137,7 @@ pub enum Internal {}
 /// but it is recommended that these internal ratings are not displayed.
 /// Display [`Public`] ratings instead.
 ///
-/// You can convert between the scales [`FromWithParameters`] and [`IntoWithParameters`].
+/// You can convert between the scales [`FromWithSettings`] and [`IntoWithSettings`].
 /// The requirement for that is that [`ConvertToScale`] is implemented for the given scales,
 /// but this is the case for [`Public`] and [`Internal`].
 pub trait RatingScale: Eq + PartialEq + Ord + PartialOrd + Copy + Clone + Debug {}
@@ -151,19 +149,19 @@ impl RatingScale for Internal {}
 pub trait ConvertToScale<S: RatingScale>: RatingScale {
     /// Converts a rating of the [`Self`] scale to the new `S` scale.
     #[must_use]
-    fn convert(rating: Rating<Self>, parameters: Parameters) -> Rating<S>;
+    fn convert(rating: Rating<Self>, settings: GlickoSettings) -> Rating<S>;
 }
 
 impl<S: RatingScale> ConvertToScale<S> for S {
-    fn convert(rating: Rating<Self>, _parameters: Parameters) -> Rating<S> {
+    fn convert(rating: Rating<Self>, _settings: GlickoSettings) -> Rating<S> {
         rating
     }
 }
 
 impl ConvertToScale<Public> for Internal {
-    fn convert(internal: Rating<Self>, parameters: Parameters) -> Rating<Public> {
+    fn convert(internal: Rating<Self>, settings: GlickoSettings) -> Rating<Public> {
         let public_rating =
-            internal.rating() * RATING_SCALING_RATIO + parameters.start_rating().rating();
+            internal.rating() * RATING_SCALING_RATIO + settings.start_rating().rating();
         let public_deviation = internal.deviation() * RATING_SCALING_RATIO;
 
         Rating::new(public_rating, public_deviation, internal.volatility())
@@ -171,38 +169,38 @@ impl ConvertToScale<Public> for Internal {
 }
 
 impl ConvertToScale<Internal> for Public {
-    fn convert(public: Rating<Self>, parameters: Parameters) -> Rating<Internal> {
+    fn convert(public: Rating<Self>, settings: GlickoSettings) -> Rating<Internal> {
         let internal_rating =
-            (public.rating() - parameters.start_rating().rating()) / RATING_SCALING_RATIO;
+            (public.rating() - settings.start_rating().rating()) / RATING_SCALING_RATIO;
         let internal_deviation = public.deviation() / RATING_SCALING_RATIO;
 
         InternalRating::new(internal_rating, internal_deviation, public.volatility())
     }
 }
 
-/// Trait to convert between two types with [`Parameters`].
+/// Trait to convert between two types with [`GlickoSettings`].
 /// Usually used to convert between the [`Internal`] and [`Public`] Glicko-2 rating scales.
-pub trait FromWithParameters<T: ?Sized> {
+pub trait FromWithSettings<T: ?Sized> {
     /// Performs the conversion
     #[must_use]
-    fn from_with_parameters(_: T, parameters: Parameters) -> Self;
+    fn from_with_settings(_: T, settings: GlickoSettings) -> Self;
 }
 
-/// Trait to convert between two types with [`Parameters`].
+/// Trait to convert between two types with [`GlickoSettings`].
 /// Usually used to convert between the [`Internal`] the [`Public`] Glicko-2 rating scales.
 ///
-/// This trait is automatically provided for any type `T` where [`FromWithParameters<T>`] is implemented.
-pub trait IntoWithParameters<T> {
+/// This trait is automatically provided for any type `T` where [`FromWithSettings<T>`] is implemented.
+pub trait IntoWithSettings<T> {
     /// Performs the conversion
-    fn into_with_parameters(self, parameters: Parameters) -> T;
+    fn into_with_settings(self, settings: GlickoSettings) -> T;
 }
 
-impl<T, U> IntoWithParameters<U> for T
+impl<T, U> IntoWithSettings<U> for T
 where
-    U: FromWithParameters<T>,
+    U: FromWithSettings<T>,
 {
-    fn into_with_parameters(self, parameters: Parameters) -> U {
-        U::from_with_parameters(self, parameters)
+    fn into_with_settings(self, settings: GlickoSettings) -> U {
+        U::from_with_settings(self, settings)
     }
 }
 
@@ -233,17 +231,17 @@ impl<Scale: RatingScale> PartialOrd for Rating<Scale> {
     }
 }
 
-impl<Scale1: RatingScale, Scale2: RatingScale> FromWithParameters<Rating<Scale1>> for Rating<Scale2>
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<Rating<Scale1>> for Rating<Scale2>
 where
     Scale1: ConvertToScale<Scale2>,
 {
-    fn from_with_parameters(rating: Rating<Scale1>, parameters: Parameters) -> Self {
-        ConvertToScale::convert(rating, parameters)
+    fn from_with_settings(rating: Rating<Scale1>, settings: GlickoSettings) -> Self {
+        ConvertToScale::convert(rating, settings)
     }
 }
 
 impl<Scale: RatingScale> Rating<Scale> {
-    /// Creates a new [`Rating`] with the specified parameters.
+    /// Creates a new [`Rating`] with the specified values.
     ///  
     /// # Panics
     ///
@@ -280,18 +278,18 @@ impl<Scale: RatingScale> Rating<Scale> {
     }
 }
 
-// TODO: Should probably contain rating_period_duration
-/// The parameters used by the Glicko-2 algorithm.
+/// The settings used by the Glicko-2 algorithm.
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Parameters {
+pub struct GlickoSettings {
     start_rating: PublicRating,
     volatility_change: f64,
     convergence_tolerance: f64,
+    rating_period_duration: Duration,
 }
 
-impl Parameters {
-    /// Creates [`Parameters`] with the given parameters.
+impl GlickoSettings {
+    /// Creates [`GlickoSettings`] with the given settings.
     ///
     /// # Arguments
     ///
@@ -303,33 +301,69 @@ impl Parameters {
     /// See also "Step 1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf) and [`constants::DEFAULT_VOLATILITY_CHANGE`].
     /// * `convergence_tolerance` - The cutoff value for the converging loop algorithm in "Step 5.1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
     /// See also [`constants::DEFAULT_CONVERGENCE_TOLERANCE`].
+    /// * `rating_period_duration` - The duration of one (virtual) rating period.
+    /// According to [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf), the rating period duration should be such that
+    /// an average of at least 10-15 games are played within one period.
     ///
     /// # Panics
     ///
-    /// This function panics if `convergence_tolerance <= 0.0`.
+    /// This function panics if `convergence_tolerance <= 0.0` or if `rating_period_duration` is zero.
     #[must_use]
     pub fn new(
         start_rating: PublicRating,
         volatility_change: f64,
         convergence_tolerance: f64,
+        rating_period_duration: Duration,
     ) -> Self {
         assert!(
             convergence_tolerance > 0.0,
             "convergence_tolerance <= 0: {convergence_tolerance}"
         );
+        assert!(
+            !rating_period_duration.is_zero(),
+            "rating_period_duration may not be zero"
+        );
 
-        Parameters {
+        GlickoSettings {
             start_rating,
             volatility_change,
             convergence_tolerance,
+            rating_period_duration,
         }
     }
 
-    /// Creates [`Parameters`] with the same parameters as `self`, only changing the volatility change to `volatility_change`.
+    /// Creates [`GlickoSettings`] with the same settings as `self`, only changing the start rating to `start_rating`.
+    #[must_use]
+    pub fn with_start_rating(self, start_rating: PublicRating) -> Self {
+        GlickoSettings {
+            start_rating,
+            ..self
+        }
+    }
+
+    /// Creates [`GlickoSettings`] with the same settings as `self`, only changing the volatility change to `volatility_change`.
     #[must_use]
     pub fn with_volatility_change(self, volatility_change: f64) -> Self {
-        Parameters {
+        GlickoSettings {
             volatility_change,
+            ..self
+        }
+    }
+
+    /// Creates [`GlickoSettings`] with the same settings as `self`, only changing the convergence tolerance to `convergence_tolerance`.
+    #[must_use]
+    pub fn with_convergence_tolerance(self, convergence_tolerance: f64) -> Self {
+        GlickoSettings {
+            convergence_tolerance,
+            ..self
+        }
+    }
+
+    /// Creates [`GlickoSettings`] with the same settings as `self`, only changing the rating period duration to `rating_period_duration`.
+    #[must_use]
+    pub fn with_rating_period_duration(self, rating_period_duration: Duration) -> Self {
+        GlickoSettings {
+            rating_period_duration,
             ..self
         }
     }
@@ -360,15 +394,22 @@ impl Parameters {
     pub fn convergence_tolerance(&self) -> f64 {
         self.convergence_tolerance
     }
+
+    /// The
+    #[must_use]
+    pub fn rating_period_duration(&self) -> Duration {
+        self.rating_period_duration
+    }
 }
 
-impl Default for Parameters {
-    /// Creates a default version of this struct with the parameters defined in [`constants`].
+impl Default for GlickoSettings {
+    /// Creates a default version of this struct with the settings defined in [`constants`].
     fn default() -> Self {
-        Parameters::new(
+        GlickoSettings::new(
             constants::DEFAULT_START_RATING,
             constants::DEFAULT_VOLATILITY_CHANGE,
             constants::DEFAULT_CONVERGENCE_TOLERANCE,
+            constants::DEFAULT_RATING_PERIOD_DURATION,
         )
     }
 }

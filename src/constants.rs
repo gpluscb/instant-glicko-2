@@ -1,8 +1,9 @@
 //! Various constants defined or recommended in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf),
-//! including defaults for [`model::Parameters`][crate::Parameters].
+//! including defaults for [`GlickoSettings`][crate::GlickoSettings].
 
 use crate::PublicRating;
 use std::marker::PhantomData;
+use std::time::Duration;
 
 /// Constant for converting between the original Glicko scale, and the internal Glicko-2 scale.
 ///
@@ -25,6 +26,10 @@ pub const DEFAULT_VOLATILITY_CHANGE: f64 = 0.75;
 /// Default cutoff value for the converging loop algorithm as recommended by "Step 5.1." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
 /// Higher values may result in slightly better performance at the cost of less accuracy.
 pub const DEFAULT_CONVERGENCE_TOLERANCE: f64 = 0.000_001;
+
+/// Default rating period duration, being 24 hours or one day.
+pub const DEFAULT_RATING_PERIOD_DURATION: Duration = Duration::from_secs(60 * 60 * 24);
+
 /// The maximum number of iterations for the converging loop algorithm for "Step 5.4." in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
 /// This is a fail-safe so we don't enter an infinite loop (even tho that shouldn't happen if the convergence tolerance is reasonable).
 /// If the maximum number of iterations is exceeded, the function panics.

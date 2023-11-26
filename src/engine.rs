@@ -1,10 +1,10 @@
 //! This mod defines the [`RatingEngine`] struct which abstracts away the rating period from rating calculations.
 
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use crate::algorithm::{self, InternalGame, PublicGame};
 use crate::util::PushOnlyVec;
-use crate::{FromWithParameters, InternalRating, IntoWithParameters, Parameters, PublicRating};
+use crate::{FromWithSettings, GlickoSettings, InternalRating, IntoWithSettings, PublicRating};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 pub struct PlayerHandle(usize);
 
 /// A player as managed by [`RatingEngine`].
-
 // TODO: Should this be public or even exist?
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -38,14 +37,14 @@ impl PublicEnginePlayer {
     }
 }
 
-impl FromWithParameters<InternalEnginePlayer> for PublicEnginePlayer {
-    fn from_with_parameters(scaled: InternalEnginePlayer, parameters: Parameters) -> Self {
+impl FromWithSettings<InternalEnginePlayer> for PublicEnginePlayer {
+    fn from_with_settings(scaled: InternalEnginePlayer, settings: GlickoSettings) -> Self {
         PublicEnginePlayer {
-            rating: scaled.rating.into_with_parameters(parameters),
+            rating: scaled.rating.into_with_settings(settings),
             current_rating_period_results: scaled
                 .current_rating_period_results
                 .into_iter()
-                .map(|game| game.into_with_parameters(parameters))
+                .map(|game| game.into_with_settings(settings))
                 .collect(),
         }
     }
@@ -60,14 +59,14 @@ pub struct InternalEnginePlayer {
     current_rating_period_results: Vec<InternalGame>,
 }
 
-impl FromWithParameters<PublicEnginePlayer> for InternalEnginePlayer {
-    fn from_with_parameters(player: PublicEnginePlayer, parameters: Parameters) -> Self {
+impl FromWithSettings<PublicEnginePlayer> for InternalEnginePlayer {
+    fn from_with_settings(player: PublicEnginePlayer, settings: GlickoSettings) -> Self {
         InternalEnginePlayer {
-            rating: player.rating.into_with_parameters(parameters),
+            rating: player.rating.into_with_settings(settings),
             current_rating_period_results: player
                 .current_rating_period_results
                 .into_iter()
-                .map(|game| game.into_with_parameters(parameters))
+                .map(|game| game.into_with_settings(settings))
                 .collect(),
         }
     }
@@ -143,7 +142,7 @@ impl MatchResult {
 
 /// Struct for managing player ratings and calculating them based on match results.
 ///
-/// It uses the Glicko-2 algorithm with a given rating period duration and given parameters.
+/// It uses the Glicko-2 algorithm with the given settings.
 /// Matches can be added at any time, and participant ratings will update instantly.
 ///
 /// # Example
@@ -151,24 +150,21 @@ impl MatchResult {
 /// ```
 /// use std::time::Duration;
 ///
-/// use instant_glicko_2::{Parameters, PublicRating};
+/// use instant_glicko_2::{GlickoSettings, PublicRating};
 /// use instant_glicko_2::engine::{MatchResult, RatingEngine};
 ///
-/// let parameters = Parameters::default();
+/// let settings = GlickoSettings::default();
 ///
 /// // Create a RatingEngine with a one day rating period duration
 /// // The first rating period starts instantly
-/// let mut engine = RatingEngine::start_new(
-///     Duration::from_secs(60 * 60 * 24),
-///     Parameters::default(),
-/// );
+/// let mut engine = RatingEngine::start_new(GlickoSettings::default());
 ///
 /// // Register two players
 /// // The first player is relatively strong
 /// let player_1_rating_old = PublicRating::new(1700.0, 300.0, 0.06);
 /// let player_1 = engine.register_player(player_1_rating_old).0;
 /// // The second player hasn't played any games
-/// let player_2_rating_old = parameters.start_rating();
+/// let player_2_rating_old = settings.start_rating();
 /// let player_2 = engine.register_player(player_2_rating_old).0;
 ///
 /// // They play and player_2 wins
@@ -196,18 +192,17 @@ impl MatchResult {
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct RatingEngine {
-    rating_period_duration: Duration,
     last_rating_period_start: SystemTime,
     // This should be a PushOnlyVec because we hand out index references.
     managed_players: PushOnlyVec<InternalEnginePlayer>,
-    parameters: Parameters,
+    settings: GlickoSettings,
 }
 
 impl RatingEngine {
     /// Creates a new [`RatingEngine`], starting the first rating period immediately.
     #[must_use]
-    pub fn start_new(rating_period_duration: Duration, parameters: Parameters) -> Self {
-        Self::start_new_at(rating_period_duration, SystemTime::now(), parameters)
+    pub fn start_new(settings: GlickoSettings) -> Self {
+        Self::start_new_at(SystemTime::now(), settings)
     }
 
     /// Creates a new [`RatingEngine`], starting the first rating period at the specified point in time.
@@ -216,27 +211,15 @@ impl RatingEngine {
     ///
     /// # Panics
     ///
-    /// This function panics if `start_time` is in the future or if `rating_period_duration` is zero.
+    /// This function panics if `start_time` is in the future.
+    // FIXME: No it doesn't
     #[must_use]
-    pub fn start_new_at(
-        rating_period_duration: Duration,
-        start_time: SystemTime,
-        parameters: Parameters,
-    ) -> Self {
-        assert!(!rating_period_duration.is_zero());
-
+    pub fn start_new_at(start_time: SystemTime, settings: GlickoSettings) -> Self {
         RatingEngine {
-            rating_period_duration,
             last_rating_period_start: start_time,
             managed_players: PushOnlyVec::new(),
-            parameters,
+            settings,
         }
-    }
-
-    /// The rating period duration.
-    #[must_use]
-    pub fn rating_period_duration(&self) -> Duration {
-        self.rating_period_duration
     }
 
     /// The start of the last opened rating period.
@@ -245,10 +228,10 @@ impl RatingEngine {
         self.last_rating_period_start
     }
 
-    /// The parameters.
+    /// The settings.
     #[must_use]
-    pub fn parameters(&self) -> Parameters {
-        self.parameters
+    pub fn settings(&self) -> GlickoSettings {
+        self.settings
     }
 
     /// The rating of a player at the **start of** the last opened rating period.
@@ -259,14 +242,14 @@ impl RatingEngine {
     #[must_use]
     pub fn last_rating_period_rating<R>(&self, player: PlayerHandle) -> R
     where
-        R: FromWithParameters<InternalRating>,
+        R: FromWithSettings<InternalRating>,
     {
         self.managed_players
             .vec()
             .get(player.0)
             .expect("Player didn't belong to this RatingEngine")
             .rating()
-            .into_with_parameters(self.parameters)
+            .into_with_settings(self.settings)
     }
 
     /// Returns an [`Iterator`] over all registered players.
@@ -283,11 +266,11 @@ impl RatingEngine {
     /// A tuple containing a value that can be later used to identify this player with this engine
     /// and the number of rating periods that were closed for this operation.
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     // TODO: a way to register Right Now (so that the deviation is exactly the same at the now timestamp)
     pub fn register_player<R>(&mut self, rating: R) -> (PlayerHandle, u32)
     where
-        R: IntoWithParameters<InternalRating>,
+        R: IntoWithSettings<InternalRating>,
     {
         self.register_player_at(rating, SystemTime::now())
     }
@@ -309,14 +292,14 @@ impl RatingEngine {
     ///
     /// This function panics if `time` is earlier than the start of the last rating period.
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     pub fn register_player_at<R>(&mut self, rating: R, time: SystemTime) -> (PlayerHandle, u32)
     where
-        R: IntoWithParameters<InternalRating>,
+        R: IntoWithSettings<InternalRating>,
     {
         let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
 
-        let rating = rating.into_with_parameters(self.parameters);
+        let rating = rating.into_with_settings(self.settings);
 
         let index = self.managed_players.vec().len();
 
@@ -341,7 +324,7 @@ impl RatingEngine {
     ///
     /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     pub fn register_result<S: Score>(
         &mut self,
         player_1: PlayerHandle,
@@ -367,7 +350,7 @@ impl RatingEngine {
     ///
     /// This function might panic or behave undesirable if the `result`'s players do not come from this `RatingEngine`.
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     pub fn register_result_at<S: Score>(
         &mut self,
         player_1: PlayerHandle,
@@ -423,11 +406,11 @@ impl RatingEngine {
     ///
     /// This function might panic or return a meaningless result if `player` wasn't sourced from this [`RatingEngine`].
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     #[must_use]
     pub fn player_rating<R>(&mut self, player: PlayerHandle) -> (R, u32)
     where
-        R: FromWithParameters<InternalRating>,
+        R: FromWithSettings<InternalRating>,
     {
         self.player_rating_at(player, SystemTime::now())
     }
@@ -453,11 +436,11 @@ impl RatingEngine {
     ///
     /// This function might panic or return a meaningless result if `player` wasn't sourced from this [`RatingEngine`].
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     #[must_use]
     pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: SystemTime) -> (R, u32)
     where
-        R: FromWithParameters<InternalRating>,
+        R: FromWithSettings<InternalRating>,
     {
         let (elapsed_periods, closed_periods) = self.maybe_close_rating_periods_at(time);
 
@@ -471,9 +454,9 @@ impl RatingEngine {
             player.rating,
             &player.current_rating_period_results,
             elapsed_periods,
-            self.parameters,
+            self.settings,
         )
-        .into_with_parameters(self.parameters);
+        .into_with_settings(self.settings);
 
         (rating, closed_periods)
     }
@@ -492,7 +475,7 @@ impl RatingEngine {
     ///
     /// # Panics
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     pub fn maybe_close_rating_periods(&mut self) -> (f64, u32) {
         self.maybe_close_rating_periods_at(SystemTime::now())
     }
@@ -516,7 +499,7 @@ impl RatingEngine {
     ///
     /// # Panics
     ///
-    /// This function might panic if the set parameters' convergence tolerance is unreasonably low.
+    /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     pub fn maybe_close_rating_periods_at(&mut self, time: SystemTime) -> (f64, u32) {
         let elapsed_periods = self.elapsed_periods_at(time);
 
@@ -532,7 +515,7 @@ impl RatingEngine {
                     player.rating,
                     &player.current_rating_period_results,
                     1.0,
-                    self.parameters,
+                    self.settings,
                 );
 
                 // We have now submitted the results to the players rating
@@ -540,7 +523,7 @@ impl RatingEngine {
             }
         }
 
-        self.last_rating_period_start += periods_to_close * self.rating_period_duration;
+        self.last_rating_period_start += periods_to_close * self.settings.rating_period_duration;
 
         (elapsed_periods.fract(), periods_to_close)
     }
@@ -559,7 +542,7 @@ impl RatingEngine {
     #[must_use]
     pub fn elapsed_periods_at(&self, time: SystemTime) -> f64 {
         if let Ok(elapsed_duration) = time.duration_since(self.last_rating_period_start) {
-            elapsed_duration.as_secs_f64() / self.rating_period_duration.as_secs_f64()
+            elapsed_duration.as_secs_f64() / self.settings.rating_period_duration.as_secs_f64()
         } else {
             0.0
         }
@@ -571,7 +554,7 @@ mod test {
     use std::time::{Duration, SystemTime};
 
     use super::{MatchResult, RatingEngine};
-    use crate::{Parameters, PublicRating};
+    use crate::{GlickoSettings, PublicRating};
 
     macro_rules! assert_approx_eq {
         ($a:expr, $b:expr, $tolerance:expr $(,)?) => {{
@@ -590,11 +573,13 @@ mod test {
     /// This tests the example calculation in [Glickman's paper](http://www.glicko.net/glicko/glicko2.pdf).
     #[test]
     fn test_paper_example() {
-        let parameters = Parameters::default().with_volatility_change(0.5);
+        let settings = GlickoSettings::default()
+            .with_volatility_change(0.5)
+            .with_rating_period_duration(Duration::from_secs(1));
 
         let start_time = SystemTime::UNIX_EPOCH;
 
-        let mut engine = RatingEngine::start_new_at(Duration::from_secs(1), start_time, parameters);
+        let mut engine = RatingEngine::start_new_at(start_time, settings);
 
         let player = engine
             .register_player_at(PublicRating::new(1500.0, 200.0, 0.06), start_time)
@@ -602,19 +587,19 @@ mod test {
 
         let opponent_a = engine
             .register_player_at(
-                PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+                PublicRating::new(1400.0, 30.0, settings.start_rating().volatility()),
                 start_time,
             )
             .0;
         let opponent_b = engine
             .register_player_at(
-                PublicRating::new(1550.0, 100.0, parameters.start_rating().volatility()),
+                PublicRating::new(1550.0, 100.0, settings.start_rating().volatility()),
                 start_time,
             )
             .0;
         let opponent_c = engine
             .register_player_at(
-                PublicRating::new(1700.0, 300.0, parameters.start_rating().volatility()),
+                PublicRating::new(1700.0, 300.0, settings.start_rating().volatility()),
                 start_time,
             )
             .0;
@@ -635,11 +620,12 @@ mod test {
     #[test]
     fn test_rating_period_close() {
         // Setup similar to paper setup
-        let parameters = Parameters::default();
+        let settings =
+            GlickoSettings::default().with_rating_period_duration(Duration::from_secs(1));
 
         let start_time = SystemTime::UNIX_EPOCH;
 
-        let mut engine = RatingEngine::start_new_at(Duration::from_secs(1), start_time, parameters);
+        let mut engine = RatingEngine::start_new_at(start_time, settings);
 
         let player = engine
             .register_player_at(PublicRating::new(1500.0, 200.0, 0.06), start_time)
@@ -647,7 +633,7 @@ mod test {
 
         let opponent = engine
             .register_player_at(
-                PublicRating::new(1400.0, 30.0, parameters.start_rating().volatility()),
+                PublicRating::new(1400.0, 30.0, settings.start_rating().volatility()),
                 start_time,
             )
             .0;
@@ -693,15 +679,15 @@ mod test {
     #[test]
     fn test_time_change() {
         // Setup similar to paper setup
-        let parameters = Parameters::default();
+        let settings =
+            GlickoSettings::default().with_rating_period_duration(Duration::from_secs(60 * 60));
 
         let start_time = SystemTime::UNIX_EPOCH;
 
-        let mut engine =
-            RatingEngine::start_new_at(Duration::from_secs(60 * 60), start_time, parameters);
+        let mut engine = RatingEngine::start_new_at(start_time, settings);
 
         let player = engine
-            .register_player_at(parameters.start_rating(), start_time)
+            .register_player_at(settings.start_rating(), start_time)
             .0;
 
         let rating_at_start: PublicRating = engine.player_rating_at(player, start_time).0;
