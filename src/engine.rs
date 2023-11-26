@@ -2,9 +2,12 @@
 
 use std::time::SystemTime;
 
-use crate::algorithm::{self, InternalGame, PublicGame};
+use crate::algorithm::{self, Game, InternalGame};
 use crate::util::PushOnlyVec;
-use crate::{FromWithSettings, GlickoSettings, InternalRating, IntoWithSettings, PublicRating};
+use crate::{
+    ConvertToScale, FromWithSettings, GlickoSettings, Internal, IntoWithSettings, Public, Rating,
+    RatingScale,
+};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -15,53 +18,38 @@ use serde::{Deserialize, Serialize};
 pub struct PlayerHandle(usize);
 
 /// A player as managed by [`RatingEngine`].
-// TODO: Should this be public or even exist?
 #[derive(Clone, PartialEq, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PublicEnginePlayer {
-    rating: PublicRating,
-    current_rating_period_results: Vec<PublicGame>,
+#[cfg_attr(feature = "serde", serde(bound(serialize = "", deserialize = "")))]
+pub struct EnginePlayer<Scale: RatingScale> {
+    rating: Rating<Scale>,
+    current_rating_period_results: Vec<Game<Scale>>,
 }
 
-impl PublicEnginePlayer {
+pub type PublicEnginePlayerTODO = EnginePlayer<Public>;
+pub type InternalEnginePlayerTODO = EnginePlayer<Internal>;
+
+impl<Scale: RatingScale> EnginePlayer<Scale> {
     /// The rating of this player at the start of the current rating period.
     #[must_use]
-    pub fn rating(&self) -> PublicRating {
+    pub fn rating(&self) -> Rating<Scale> {
         self.rating
     }
 
     /// The match results the player had in the current rating period.
     #[must_use]
-    pub fn current_rating_period_results(&self) -> &[PublicGame] {
+    pub fn current_rating_period_results(&self) -> &[Game<Scale>] {
         &self.current_rating_period_results
     }
 }
 
-impl FromWithSettings<InternalEnginePlayer> for PublicEnginePlayer {
-    fn from_with_settings(scaled: InternalEnginePlayer, settings: GlickoSettings) -> Self {
-        PublicEnginePlayer {
-            rating: scaled.rating.into_with_settings(settings),
-            current_rating_period_results: scaled
-                .current_rating_period_results
-                .into_iter()
-                .map(|game| game.into_with_settings(settings))
-                .collect(),
-        }
-    }
-}
-
-/// A player as managed by [`RatingEngine`] with all values scaled to the internal rating scale.
-/// See "Step 2." and "Step 8." in [Glickmans' paper](http://www.glicko.net/glicko/glicko2.pdf).
-#[derive(Clone, PartialEq, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct InternalEnginePlayer {
-    rating: InternalRating,
-    current_rating_period_results: Vec<InternalGame>,
-}
-
-impl FromWithSettings<PublicEnginePlayer> for InternalEnginePlayer {
-    fn from_with_settings(player: PublicEnginePlayer, settings: GlickoSettings) -> Self {
-        InternalEnginePlayer {
+impl<Scale1: RatingScale, Scale2: RatingScale> FromWithSettings<EnginePlayer<Scale1>>
+    for EnginePlayer<Scale2>
+where
+    Scale1: ConvertToScale<Scale2>,
+{
+    fn from_with_settings(player: EnginePlayer<Scale1>, settings: GlickoSettings) -> Self {
+        EnginePlayer {
             rating: player.rating.into_with_settings(settings),
             current_rating_period_results: player
                 .current_rating_period_results
@@ -72,20 +60,6 @@ impl FromWithSettings<PublicEnginePlayer> for InternalEnginePlayer {
     }
 }
 
-impl InternalEnginePlayer {
-    /// The rating of this player at the start of the current rating period.
-    #[must_use]
-    pub fn rating(&self) -> InternalRating {
-        self.rating
-    }
-
-    /// The match results the player had in the current rating period.
-    #[must_use]
-    pub fn current_rating_period_results(&self) -> &[InternalGame] {
-        &self.current_rating_period_results
-    }
-}
-
 /// A score of a match between a player and an opponent.
 pub trait Score {
     /// The player score.
@@ -93,7 +67,7 @@ pub trait Score {
     #[must_use]
     fn player_score(&self) -> f64;
 
-    /// The oppoent score.
+    /// The opponent score.
     /// Should be between `0.0` (loss) and `1.0` (win).
     #[must_use]
     fn opponent_score(&self) -> f64;
@@ -194,7 +168,7 @@ impl MatchResult {
 pub struct RatingEngine {
     last_rating_period_start: SystemTime,
     // This should be a PushOnlyVec because we hand out index references.
-    managed_players: PushOnlyVec<InternalEnginePlayer>,
+    managed_players: PushOnlyVec<InternalEnginePlayerTODO>,
     settings: GlickoSettings,
 }
 
@@ -240,9 +214,12 @@ impl RatingEngine {
     ///
     /// This function might panic or behave undesirably if `player` doesn't belong to this [`RatingEngine`].
     #[must_use]
-    pub fn last_rating_period_rating<R>(&self, player: PlayerHandle) -> R
+    pub fn last_rating_period_rating<Scale: RatingScale>(
+        &self,
+        player: PlayerHandle,
+    ) -> Rating<Scale>
     where
-        R: FromWithSettings<InternalRating>,
+        Internal: ConvertToScale<Scale>,
     {
         self.managed_players
             .vec()
@@ -268,9 +245,12 @@ impl RatingEngine {
     ///
     /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     // TODO: a way to register Right Now (so that the deviation is exactly the same at the now timestamp)
-    pub fn register_player<R>(&mut self, rating: R) -> (PlayerHandle, u32)
+    pub fn register_player<Scale: RatingScale>(
+        &mut self,
+        rating: Rating<Scale>,
+    ) -> (PlayerHandle, u32)
     where
-        R: IntoWithSettings<InternalRating>,
+        Scale: ConvertToScale<Internal>,
     {
         self.register_player_at(rating, SystemTime::now())
     }
@@ -293,9 +273,13 @@ impl RatingEngine {
     /// This function panics if `time` is earlier than the start of the last rating period.
     ///
     /// This function might panic if the set settings' convergence tolerance is unreasonably low.
-    pub fn register_player_at<R>(&mut self, rating: R, time: SystemTime) -> (PlayerHandle, u32)
+    pub fn register_player_at<Scale: RatingScale>(
+        &mut self,
+        rating: Rating<Scale>,
+        time: SystemTime,
+    ) -> (PlayerHandle, u32)
     where
-        R: IntoWithSettings<InternalRating>,
+        Scale: ConvertToScale<Internal>,
     {
         let (_, closed_periods) = self.maybe_close_rating_periods_at(time);
 
@@ -303,7 +287,7 @@ impl RatingEngine {
 
         let index = self.managed_players.vec().len();
 
-        self.managed_players.push(InternalEnginePlayer {
+        self.managed_players.push(InternalEnginePlayerTODO {
             rating,
             current_rating_period_results: Vec::new(),
         });
@@ -408,9 +392,12 @@ impl RatingEngine {
     ///
     /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     #[must_use]
-    pub fn player_rating<R>(&mut self, player: PlayerHandle) -> (R, u32)
+    pub fn player_rating<Scale: RatingScale>(
+        &mut self,
+        player: PlayerHandle,
+    ) -> (Rating<Scale>, u32)
     where
-        R: FromWithSettings<InternalRating>,
+        Internal: ConvertToScale<Scale>,
     {
         self.player_rating_at(player, SystemTime::now())
     }
@@ -438,9 +425,13 @@ impl RatingEngine {
     ///
     /// This function might panic if the set settings' convergence tolerance is unreasonably low.
     #[must_use]
-    pub fn player_rating_at<R>(&mut self, player: PlayerHandle, time: SystemTime) -> (R, u32)
+    pub fn player_rating_at<Scale: RatingScale>(
+        &mut self,
+        player: PlayerHandle,
+        time: SystemTime,
+    ) -> (Rating<Scale>, u32)
     where
-        R: FromWithSettings<InternalRating>,
+        Internal: ConvertToScale<Scale>,
     {
         let (elapsed_periods, closed_periods) = self.maybe_close_rating_periods_at(time);
 
@@ -554,7 +545,7 @@ mod test {
     use std::time::{Duration, SystemTime};
 
     use super::{MatchResult, RatingEngine};
-    use crate::{GlickoSettings, PublicRating};
+    use crate::{GlickoSettings, Public, PublicRating};
 
     macro_rules! assert_approx_eq {
         ($a:expr, $b:expr, $tolerance:expr $(,)?) => {{
@@ -648,12 +639,12 @@ mod test {
         // Test that rating doesn't radically change across rating periods
         let right_before = start_time + (Duration::from_secs(1) - Duration::from_nanos(1));
         let (rating_right_before, closed_periods) =
-            engine.player_rating_at::<PublicRating>(player, right_before);
+            engine.player_rating_at::<Public>(player, right_before);
         assert_eq!(closed_periods, 0);
 
         let right_after = start_time + (Duration::from_secs(1) + Duration::from_nanos(1));
         let (rating_right_after, closed_periods) =
-            engine.player_rating_at::<PublicRating>(player, right_after);
+            engine.player_rating_at::<Public>(player, right_after);
         assert_eq!(closed_periods, 1);
 
         assert_approx_eq!(
