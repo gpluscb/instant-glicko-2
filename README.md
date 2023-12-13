@@ -52,7 +52,7 @@ assert!((new_rating.rating() - 1464.06).abs() < 0.01);
 assert!((new_rating.deviation() - 151.52).abs() < 0.01);
 assert!((new_rating.volatility() - 0.05999).abs() < 0.0001);
 ```
-Different example using [`RatingEngine`][engine::RatingEngine]:
+Different example using `RatingEngine`:
 ```rust
 use std::time::Duration;
 use instant_glicko_2::{GlickoSettings, PublicRating};
