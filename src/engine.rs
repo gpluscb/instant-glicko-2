@@ -26,8 +26,11 @@ pub struct EnginePlayer<Scale: RatingScale> {
     current_rating_period_results: Vec<Game<Scale>>,
 }
 
-pub type PublicEnginePlayerTODO = EnginePlayer<Public>;
-pub type InternalEnginePlayerTODO = EnginePlayer<Internal>;
+/// A player in the [`RatingEngine`] with a rating of [`Public`] scale.
+pub type PublicEnginePlayer = EnginePlayer<Public>;
+
+/// A player in the [`RatingEngine`] with a rating of [`Internal`] scale.
+pub type InternalEnginePlayer = EnginePlayer<Internal>;
 
 impl<Scale: RatingScale> EnginePlayer<Scale> {
     /// The rating of this player at the start of the current rating period.
@@ -168,7 +171,7 @@ impl MatchResult {
 pub struct RatingEngine {
     last_rating_period_start: SystemTime,
     // This should be a PushOnlyVec because we hand out index references.
-    managed_players: PushOnlyVec<InternalEnginePlayerTODO>,
+    managed_players: PushOnlyVec<InternalEnginePlayer>,
     settings: GlickoSettings,
 }
 
@@ -282,7 +285,7 @@ impl RatingEngine {
 
         let index = self.managed_players.vec().len();
 
-        self.managed_players.push(InternalEnginePlayerTODO {
+        self.managed_players.push(InternalEnginePlayer {
             rating,
             current_rating_period_results: Vec::new(),
         });
