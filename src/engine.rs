@@ -182,14 +182,8 @@ impl RatingEngine {
     /// Creates a new [`RatingEngine`], starting the first rating period at the specified point in time.
     ///
     /// This function is meant mostly for testability.
-    ///
-    /// # Panics
-    ///
-    /// This function panics if `start_time` is in the future.
     #[must_use]
     pub fn start_new_at(start_time: SystemTime, settings: GlickoSettings) -> Self {
-        assert!(start_time < SystemTime::now());
-
         RatingEngine {
             last_rating_period_start: start_time,
             managed_players: PushOnlyVec::new(),
